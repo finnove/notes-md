@@ -230,7 +230,7 @@ if update_untouched
 elsif options[:export]
   puts "Creating md files for #{candidates.size} notes without an md file. Existing files are not touched."
 else
-  puts "WARNING: all changed files will be overwritten automatically."
+  puts "WARNING: all changed files will be overwritten."
 end
 # y to "Also update" is the confirmation; no second question.
 unless update_untouched
