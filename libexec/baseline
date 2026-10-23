@@ -1,0 +1,66 @@
+#!/usr/bin/env ruby
+# encoding: UTF-8
+# Converts the whole cache to the baseline folder, one <uuid>.md per note.
+# The folder is outside ~/notes in its own git repo: `git diff` shows what a
+# code change did to the conversion, `git commit` accepts it as the new
+# baseline. The md files in ~/notes are not touched.
+
+Encoding.default_external = Encoding::UTF_8
+Encoding.default_internal = Encoding::UTF_8
+
+require_relative '../notes_common'
+require 'optparse'
+require 'sqlite3'
+
+TEST_FILE = "minitest/baseline_test.rb"
+
+parser = OptionParser.new do |opts|
+  opts.banner = "Usage: notes baseline\n\n" \
+                "Shows what a code change or a pandoc upgrade does to every note, before it touches\n" \
+                "your archive. Without it, you only find out when your real md files change.\n\n" \
+                "Converts the whole local copy to the baseline folder (~/notes.baseline), one <uuid>.md per note.\n" \
+                "See the changes with git diff in the folder, and commit to accept them as the new baseline.\n" \
+                "The md files in ~/notes are not touched.\n\n" \
+                "Also records a fingerprint of the conversion code and pandoc version in .fingerprint.\n" \
+                "notes export --marked and --failed offer to run notes baseline when the conversion has changed since.\n\n" \
+                "Options:"
+  opts.on("-h", "--help", "Show this help") { puts opts; exit }
+  opts.separator ""
+  opts.separator "Examples:"
+  opts.separator "  notes baseline"
+  opts.separator "  notes baseline && git -C ~/notes.baseline diff"
+  opts.separator ""
+  opts.separator "Environment variables:"
+  opts.separator "  NOTES_BASELINE  the baseline folder (default ~/notes.baseline). Must exist."
+end
+parser.parse!
+
+abort "Does not exist: #{NotesCommon::BASELINE_DIR}" unless Dir.exist?(NotesCommon::BASELINE_DIR)
+
+db = NotesCommon.open_db
+
+uuids = Dir.glob(File.join(NotesCommon::RAW_CACHE_DIR, "*.html")).map { |f| File.basename(f, ".html") }
+
+uuids.each_with_index do |uuid, idx|
+  puts "[#{idx + 1}/#{uuids.size}] converted" if (idx + 1) % 100 == 0
+  raw = File.read(File.join(NotesCommon::RAW_CACHE_DIR, "#{uuid}.html"), encoding: "UTF-8")
+  md, _, err = NotesCommon.html_to_markdown(raw)
+  if err
+    warn "ERROR pandoc for #{uuid}: #{err}"
+    next
+  end
+
+  # Checkboxes are set by notes export from ZDATA. Locked notes have encrypted
+  # ZDATA. Link items are in the internal links section, which is not
+  # included here, so link text is not needed.
+  zdata = NotesCommon.note_zdata(db, uuid)
+  md, _ = NotesCommon.apply_checkboxes(md, zdata, ->(_) {}) if zdata
+
+  File.write(File.join(NotesCommon::BASELINE_DIR, "#{uuid}.md"), md + "\n")
+end
+
+(Dir.glob(File.join(NotesCommon::BASELINE_DIR, "*.md")).map { |f| File.basename(f, ".md") } - uuids).each do |uuid|
+  File.delete(File.join(NotesCommon::BASELINE_DIR, "#{uuid}.md"))
+end
+
+File.write(NotesCommon::FINGERPRINT_FILE, NotesCommon.conversion_fingerprint)

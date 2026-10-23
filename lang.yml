@@ -1,0 +1,9 @@
+# Text written into the md files, per language. NOTES_LANG picks one
+# (default en). Changing a value changes the export of every file, so
+# existing files get a diff on re-export.
+en:
+  attachments: Attachments
+  internal_links: Internal links
+nb:
+  attachments: Vedlegg
+  internal_links: Interne lenker

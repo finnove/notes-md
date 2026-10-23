@@ -1,0 +1,52 @@
+#!/usr/bin/env ruby
+# Entry point: `notes <command> [options]` runs libexec/<command>.
+require 'optparse'
+
+TEST_FILE = "minitest/notes_test.rb"
+
+# In the order they are used.
+COMMANDS = {
+  "export"   => "Turn your notes into md files you own",
+  "compare"  => "Check that every note in Notes has an md file",
+  "health"   => "Find broken picture links and stray attachments in ~/notes",
+  "sync"     => "Keep a local copy of every note, so exports run offline",
+  "prune"    => "Delete the notes in Notes that you deleted from ~/notes",
+  "baseline" => "See what a code change does to every note before it touches ~/notes",
+}
+
+parser = OptionParser.new do |opts|
+  opts.banner = "Usage: notes <command> [options]\n\n" \
+                "Exports Apple Notes to markdown files with YAML frontmatter.\n\n" \
+                "Start here:\n" \
+                "    notes export      export your notes\n" \
+                "    notes compare     check that nothing is missing\n\n" \
+                "Commands:\n" +
+                COMMANDS.map { |name, text| "    #{name.ljust(10)} #{text}" }.join("\n") +
+                "\n\nRun notes <command> --help for the options of a command."
+  opts.on("-h", "--help", "Show this help") { puts opts; exit }
+end
+parser.order!
+
+command = ARGV.shift
+unless command
+  puts parser
+  exit 1
+end
+unless COMMANDS.key?(command)
+  warn "notes: unknown command: #{command}\n\n#{parser}"
+  exit 1
+end
+
+# What the commands need, checked before they start, so a missing gem or
+# pandoc gives one line instead of a stack trace.
+%w[nokogiri sqlite3].each do |gem|
+  require gem
+rescue LoadError
+  abort "notes: Ruby gem #{gem} is missing. Install it with: bundle install (in #{__dir__})"
+end
+if %w[export baseline].include?(command) &&
+   ENV["PATH"].to_s.split(File::PATH_SEPARATOR).none? { |dir| File.executable?(File.join(dir, "pandoc")) }
+  abort "notes: pandoc not found. Install it with: brew install pandoc"
+end
+
+exec File.join(__dir__, "libexec", command), *ARGV
