@@ -21,7 +21,7 @@ cache_complete = ->(uuid) {
 
 options = {}
 parser = OptionParser.new do |opts|
-  opts.banner = "Usage: notes export [--marked | --failed]\n\n" \
+  opts.banner = "Usage: notes export [--marked | --failed | --assets]\n\n" \
                 "Turns your notes into plain md files you own, with attachments and checkboxes\n" \
                 "intact. Without it, your notes stay locked inside Apple Notes.\n\n" \
                 "Syncs the local copy first (see notes sync), then converts from it.\n" \
@@ -41,12 +41,17 @@ parser = OptionParser.new do |opts|
   opts.on("--marked", "Rebuild notes with export: true in the frontmatter;",
                       "the files are overwritten where they are if the content has changed") { options[:marked] = true }
   opts.on("--failed", "Like --marked, but notes with export: fail in the frontmatter") { options[:failed] = true }
+  opts.on("--assets", "Write the attachment section of every md file as the export writes it now,",
+                      "also in files edited by hand; the rest of the file is not touched. Copies",
+                      "missing attachments, and deletes an old attachment file only when it is the",
+                      "same file under its new name and nothing else links to it. Counts first and asks") { options[:assets] = true }
   opts.on("-h", "--help", "Show this help") { puts opts; exit }
   opts.separator ""
   opts.separator "Examples:"
   opts.separator "  notes export"
   opts.separator "  notes export --marked"
   opts.separator "  notes export --failed"
+  opts.separator "  notes export --assets"
   opts.separator ""
   opts.separator "Environment variables:"
   opts.separator "  NOTES_IMPORT  where new md files land (default ~/notes/import). Must be under"
@@ -56,7 +61,7 @@ parser = OptionParser.new do |opts|
 end
 parser.parse!
 
-given = %i[marked failed].select { |o| options[o] }
+given = %i[marked failed assets].select { |o| options[o] }
 abort "--#{given[0].to_s.tr("_", "-")} cannot be combined with --#{given[1].to_s.tr("_", "-")}" if given.size > 1
 abort "notes export takes no positional arguments" if ARGV[0]
 options[:export] = given.empty?
@@ -130,6 +135,83 @@ def log(msg)
 end
 
 db = NotesCommon.open_db
+
+# --assets: the attachment section of every md file as the export writes it
+# now. Only the section changes; the text, the frontmatter (except a note_sum
+# that matched) and the internal links stay. Counts first, then asks.
+if options[:assets]
+  texts = Dir.glob(File.join(NotesCommon::NOTES_ROOT, "**", "*.md")).sort.to_h { |f| [f, File.read(f, encoding: "UTF-8")] }
+  asset_link = /\]\((assets\/[^)]+)\)/
+  # How many md files link to each asset file.
+  linked_by = Hash.new(0)
+  texts.each { |f, text| text.scan(asset_link).flatten.uniq.each { |r| linked_by[File.expand_path(r, File.dirname(f))] += 1 } }
+
+  counts = Hash.new(0)
+  plans = []
+  texts.each do |f, text|
+    note_id = NotesCommon.frontmatter(text)["note_id"]
+    next unless note_id
+    note_pk = db.get_first_value("SELECT Z_PK FROM ZICCLOUDSYNCINGOBJECT WHERE lower(ZIDENTIFIER) = ?", [note_id.downcase])
+    next counts[:not_in_db] += 1 unless note_pk
+    att = NotesCommon.attachment_section(db, note_pk)
+    # An attachment not downloaded would drop out of the section.
+    next counts[:not_downloaded] += 1 if att[:not_downloaded].any?
+    next if att[:section].empty?
+    new_text = NotesCommon.replace_attachment_section(text, att[:section])
+    next if new_text == text
+    # A note_sum that matched stays matching: the file is still unedited.
+    sum = NotesCommon.frontmatter(text)["note_sum"]
+    if sum && sum == NotesCommon.body_sum(text)
+      new_text = new_text.sub(/^note_sum: .*$/, "note_sum: #{NotesCommon.body_sum(new_text)}")
+    end
+
+    dir = File.dirname(f)
+    copies = att[:refs].map { |name, src| [src, File.join(dir, "assets", name)] }.reject { |_, dest| File.exist?(dest) }
+    new_names = att[:refs].map { |name, _| "assets/#{name}" }
+    old_section = text[NotesCommon::ATTACHMENT_SECTION].to_s
+    outside = text.sub(old_section, "")
+    deletes = []
+    (old_section.scan(asset_link).flatten.uniq - new_names).each do |ref|
+      old_path = File.join(dir, ref)
+      next unless File.exist?(old_path)
+      if outside.include?("](#{ref})")
+        counts[:text_links] += 1
+      elsif linked_by[File.expand_path(old_path)] <= 1 && att[:refs].any? { |_, src| File.binread(old_path) == NotesCommon.asset_data(src).b }
+        deletes << old_path
+      else
+        counts[:kept] += 1
+      end
+    end
+    counts[:files] += 1
+    counts[:copied] += copies.size
+    counts[:deleted] += deletes.size
+    plans << [f, new_text, copies, deletes]
+  end
+
+  puts "#{counts[:files]} file(s) get a new attachment section."
+  puts "#{counts[:copied]} attachment(s) copied to assets/."
+  puts "#{counts[:deleted]} old attachment file(s) deleted: the same file under its new name."
+  puts "#{counts[:kept]} old attachment file(s) kept: check by hand." if counts[:kept] > 0
+  puts "#{counts[:text_links]} link(s) in the text point to old attachment names (not changed)." if counts[:text_links] > 0
+  puts "#{counts[:not_downloaded]} file(s) skipped: an attachment is not downloaded from iCloud." if counts[:not_downloaded] > 0
+  puts "#{counts[:not_in_db]} file(s) skipped: the note is not in Notes." if counts[:not_in_db] > 0
+  exit 0 if plans.empty?
+  $stdout.write "Continue? [y/N]: "
+  $stdout.flush
+  exit 0 unless $stdin.gets.to_s.strip.downcase == "y"
+
+  plans.each do |f, new_text, copies, deletes|
+    copies.each do |src, dest|
+      FileUtils.mkdir_p File.dirname(dest)
+      File.binwrite dest, NotesCommon.asset_data(src)
+    end
+    NotesCommon.write_atomic(f, new_text)
+    deletes.each { |path| File.delete(path) }
+  end
+  puts "\nDone: #{plans.size} file(s) updated."
+  puts "\nnext: check the changes with git diff, then stage and commit them yourself (git add, git commit)."
+  exit 0
+end
 
 # --- Export dir helper ---
 

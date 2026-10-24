@@ -99,6 +99,7 @@ Content converted from Notes …
 | `notes export`   | Build new notes, update the ones you have not edited           |
 | `--marked`       | Rebuild files with `export: true`                              |
 | `--failed`       | Rebuild files with `export: fail`                              |
+| `--assets`       | Rewrite only the attachment section, also in edited files      |
 | `notes sync`     | Update the local cache of notes (export runs it first)         |
 | `notes compare`  | Check, per folder, that every note in Notes has an md file     |
 | `notes health`   | Find broken, orphaned and shared attachments, duplicate notes  |

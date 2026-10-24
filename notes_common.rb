@@ -507,29 +507,10 @@ module NotesCommon
     end
     tags = tags.reject(&:empty?).uniq
 
-    # Attachments: the file is named after the attachment's UUID in Notes
-    # (<media_uuid>.<ext>), and the original name is the link text. The name is
-    # unique across asset folders.
-    saved_images = []
-    saved_files = []
-    refs = []
-    not_downloaded = []
-    attachment_sources(db, note_pk).each do |media_uuid, src|
-      unless src
-        not_downloaded << media_uuid
-        next
-      end
-      safe_name = asset_name(media_uuid, src)
-      refs << [safe_name, src]
-      # [, ] and \ in the original name are escaped so they do not break the markdown link.
-      label = File.basename(src).unicode_normalize(:nfc).gsub(/[\[\]\\]/) { "\\#{$&}" }
-      (IMAGE_EXTS.include?(File.extname(src).downcase) ? saved_images : saved_files) << [label, safe_name]
-    end
-
-    image_lines = saved_images.map { |text, n| "![#{text}](assets/#{n})" }
-    file_lines  = saved_files.map  { |text, n| "[#{text}](assets/#{n})" }
-    att_lines   = image_lines + file_lines
-    att_section  = att_lines.empty? ? "" : "## #{MD_TEXT["attachments"]}\n" + att_lines.join("\n")
+    att = attachment_section(db, note_pk)
+    att_section = att[:section]
+    refs = att[:refs]
+    not_downloaded = att[:not_downloaded]
     link_section = internal_links.empty? ? "" : "## #{MD_TEXT["internal_links"]}\n" + internal_links.join("\n")
 
     fm = {}
@@ -562,6 +543,45 @@ module NotesCommon
     fm["export"] = result[:status]
     text = render_frontmatter.() + text.sub(FRONTMATTER, "")
     { text: text, result: result, not_downloaded: not_downloaded, box_problems: box_problems }
+  end
+
+  # The attachment section of a note as the export writes it, the files it
+  # links to as [[asset_name, source_file], ...], and the media IDs of
+  # attachments not downloaded from iCloud (left out of the section).
+  # The file is named after the attachment's UUID in Notes (<media_uuid>.<ext>),
+  # and the original name is the link text. The name is unique across asset folders.
+  def attachment_section(db, note_pk)
+    saved_images = []
+    saved_files = []
+    refs = []
+    not_downloaded = []
+    attachment_sources(db, note_pk).each do |media_uuid, src|
+      unless src
+        not_downloaded << media_uuid
+        next
+      end
+      safe_name = asset_name(media_uuid, src)
+      refs << [safe_name, src]
+      # [, ] and \ in the original name are escaped so they do not break the markdown link.
+      label = File.basename(src).unicode_normalize(:nfc).gsub(/[\[\]\\]/) { "\\#{$&}" }
+      (IMAGE_EXTS.include?(File.extname(src).downcase) ? saved_images : saved_files) << [label, safe_name]
+    end
+    lines = saved_images.map { |text, n| "![#{text}](assets/#{n})" } + saved_files.map { |text, n| "[#{text}](assets/#{n})" }
+    { section: lines.empty? ? "" : "## #{MD_TEXT["attachments"]}\n" + lines.join("\n"), refs: refs, not_downloaded: not_downloaded }
+  end
+
+  ATTACHMENT_HEADINGS = Regexp.union(LANGUAGES.values.map { |t| t["attachments"] })
+  # The attachment section in an md file: from its heading to the next ##
+  # heading or the end, in any language in lang.yml.
+  ATTACHMENT_SECTION = /^## #{ATTACHMENT_HEADINGS}\n.*?(?=^## |\z)/m
+
+  # text with its attachment section replaced by section, or, without one,
+  # section put where the export puts it: before the internal links, or last.
+  def replace_attachment_section(text, section)
+    return text.sub(ATTACHMENT_SECTION) { |old| section + (old.end_with?("\n\n") ? "\n\n" : "\n") } if text.match?(ATTACHMENT_SECTION)
+    links = /^## #{LINK_SECTION}\n/
+    return text.sub(links) { "#{section}\n\n#{$&}" } if text.match?(links)
+    text.sub(/\n*\z/, "\n\n#{section}\n")
   end
 
   # --- Attachments ---

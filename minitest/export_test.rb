@@ -18,7 +18,7 @@ class ExportTest < Minitest::Test
 
   def test_usage_lists_every_mode
     out = `ruby #{SCRIPT_PATH} --help 2>&1`
-    assert_includes out, "Usage: notes export [--marked | --failed]\n"
+    assert_includes out, "Usage: notes export [--marked | --failed | --assets]\n"
   end
 
   def test_folder_name_argument_fails
@@ -594,6 +594,160 @@ class ExportTest < Minitest::Test
   end
 
   # NOTES_LANG=nb writes the section headings in Norwegian.
+  # --- notes export --assets ---
+
+  # The test note with one attachment in Notes (MEDIA1, bilde.png = "png").
+  def assets_env(dir)
+    env = export_env(dir)
+    home = File.join(dir, "home")
+    media = File.join(home, "Library", "Group Containers", "group.com.apple.notes", "Accounts", "KONTO", "Media", "MEDIA1", "x")
+    FileUtils.mkdir_p media
+    File.write(File.join(media, "bilde.png"), "png")
+    sql env, "INSERT INTO ZICCLOUDSYNCINGOBJECT (Z_PK, ZIDENTIFIER, ZFILENAME) VALUES (30, 'MEDIA1', 'bilde.png'), (31, 'KONTO', NULL)"
+    sql env, "INSERT INTO ZICCLOUDSYNCINGOBJECT (Z_PK, Z_ENT, ZNOTE, ZMEDIA, ZACCOUNT1) VALUES (32, 5, 10, 30, 31)"
+    env.merge("HOME" => home, "RUBYOPT" => "-EUTF-8")
+  end
+
+  # An md file edited by hand (no matching note_sum), with the attachment
+  # section as an older export wrote it, and the old asset file.
+  def old_md(dir, body: "Aktiv\ntekst\nmin egen linje\n", old_asset: "png", section: "## Attachments\n![bilde.png](assets/bilde.png)\n")
+    path = File.join(dir, "notes", "journal", "aktiv.md")
+    FileUtils.mkdir_p File.join(dir, "notes", "journal", "assets")
+    File.write(File.join(dir, "notes", "journal", "assets", "bilde.png"), old_asset) if old_asset
+    write_md(dir, "journal/aktiv.md", "---\ncreated_at: 2018-01-01\nexport: pass\nnote_id: #{ACTIVE}\n---\n\n#{body}\n#{section}")
+  end
+
+  def asset(dir, name) = File.join(dir, "notes", "journal", "assets", name)
+
+  def test_assets_replaces_only_the_attachment_section
+    Dir.mktmpdir do |dir|
+      env = assets_env(dir)
+      path = old_md(dir)
+      out, status = run_export(env, dir, "--assets")
+      assert status.success?, out
+      assert_equal "---\ncreated_at: 2018-01-01\nexport: pass\nnote_id: #{ACTIVE}\n---\n\nAktiv\ntekst\nmin egen linje\n\n" \
+                   "## Attachments\n![bilde.png](assets/MEDIA1.png)\n", File.read(path)
+      assert_equal "png", File.read(asset(dir, "MEDIA1.png"))
+      refute File.exist?(asset(dir, "bilde.png")), "the old file is the same file under its old name"
+    end
+  end
+
+  def test_assets_counts_first_and_asks
+    Dir.mktmpdir do |dir|
+      env = assets_env(dir)
+      path = old_md(dir)
+      before = File.read(path)
+      out, _ = run_export(env, dir, "--assets", input: "n\n")
+      assert_includes out, "1 file(s) get a new attachment section.\n"
+      assert_includes out, "1 attachment(s) copied to assets/.\n"
+      assert_includes out, "1 old attachment file(s) deleted: the same file under its new name.\n"
+      assert_includes out, "Continue? [y/N]: "
+      assert_equal before, File.read(path)
+      assert File.exist?(asset(dir, "bilde.png"))
+      refute File.exist?(asset(dir, "MEDIA1.png"))
+    end
+  end
+
+  def test_assets_keeps_an_old_file_with_other_content
+    Dir.mktmpdir do |dir|
+      env = assets_env(dir)
+      old_md(dir, old_asset: "annet bilde")
+      out, _ = run_export(env, dir, "--assets")
+      assert_includes out, "1 old attachment file(s) kept: check by hand.\n"
+      assert_equal "annet bilde", File.read(asset(dir, "bilde.png"))
+      assert_equal "png", File.read(asset(dir, "MEDIA1.png"))
+    end
+  end
+
+  def test_assets_keeps_an_old_file_linked_in_the_text
+    Dir.mktmpdir do |dir|
+      env = assets_env(dir)
+      path = old_md(dir, body: "Aktiv\nse ![bilde](assets/bilde.png)\n")
+      out, _ = run_export(env, dir, "--assets")
+      assert_includes out, "1 link(s) in the text point to old attachment names (not changed).\n"
+      assert_includes File.read(path), "se ![bilde](assets/bilde.png)\n"
+      assert File.exist?(asset(dir, "bilde.png"))
+    end
+  end
+
+  def test_assets_keeps_an_old_file_used_by_another_md_file
+    Dir.mktmpdir do |dir|
+      env = assets_env(dir)
+      old_md(dir)
+      write_md(dir, "journal/annen.md", "---\nnote_id: other\n---\n\n![x](assets/bilde.png)\n")
+      run_export(env, dir, "--assets")
+      assert File.exist?(asset(dir, "bilde.png"))
+    end
+  end
+
+  # A file the export wrote and nobody edited stays recognised as unedited.
+  def test_assets_updates_a_matching_note_sum
+    Dir.mktmpdir do |dir|
+      env = assets_env(dir)
+      text = "---\ncreated_at: 2018-01-01\nexport: pass\nnote_id: #{ACTIVE}\n---\n\nAktiv\ntekst\n\n## Attachments\n![bilde.png](assets/bilde.png)\n"
+      text = text.sub("\n---\n\n", "\nnote_sum: #{NotesCommon.body_sum(text)}\n---\n\n")
+      path = write_md(dir, "journal/aktiv.md", text)
+      run_export(env, dir, "--assets")
+      md = File.read(path)
+      assert_includes md, "![bilde.png](assets/MEDIA1.png)"
+      assert_equal NotesCommon.body_sum(md), NotesCommon.frontmatter(md)["note_sum"]
+    end
+  end
+
+  def test_assets_leaves_a_mismatched_note_sum
+    Dir.mktmpdir do |dir|
+      env = assets_env(dir)
+      path = old_md(dir)
+      text = File.read(path).sub("\n---\n\n", "\nnote_sum: 0123456789abcdef\n---\n\n")
+      File.write(path, text)
+      commit_all(dir)
+      run_export(env, dir, "--assets")
+      assert_equal "0123456789abcdef", NotesCommon.frontmatter(File.read(path))["note_sum"]
+    end
+  end
+
+  # Without a section, it goes where the export puts it: before internal links.
+  def test_assets_adds_a_missing_section
+    Dir.mktmpdir do |dir|
+      env = assets_env(dir)
+      path = old_md(dir, old_asset: nil, section: "## Internal links\n- Annet → applenotes:note/abc\n")
+      run_export(env, dir, "--assets")
+      assert File.read(path).end_with?("min egen linje\n\n## Attachments\n![bilde.png](assets/MEDIA1.png)\n\n## Internal links\n- Annet → applenotes:note/abc\n"), File.read(path)
+    end
+  end
+
+  def test_assets_leaves_a_file_that_is_already_right
+    Dir.mktmpdir do |dir|
+      env = assets_env(dir)
+      path = old_md(dir, old_asset: nil, section: "## Attachments\n![bilde.png](assets/MEDIA1.png)\n")
+      File.write(asset(dir, "MEDIA1.png"), "png")
+      before = File.read(path)
+      out, _ = run_export(env, dir, "--assets")
+      assert_equal before, File.read(path)
+      assert_includes out, "0 file(s) get a new attachment section.\n"
+    end
+  end
+
+  # An attachment not downloaded from iCloud would drop out of the section,
+  # so the file is left as it is.
+  def test_assets_skips_a_note_with_an_attachment_not_downloaded
+    Dir.mktmpdir do |dir|
+      env = assets_env(dir)
+      FileUtils.rm_rf File.join(dir, "home", "Library", "Group Containers", "group.com.apple.notes", "Accounts", "KONTO", "Media", "MEDIA1")
+      path = old_md(dir)
+      before = File.read(path)
+      out, _ = run_export(env, dir, "--assets")
+      assert_includes out, "1 file(s) skipped: an attachment is not downloaded from iCloud.\n"
+      assert_equal before, File.read(path)
+    end
+  end
+
+  def test_help_lists_assets
+    out = `ruby #{SCRIPT_PATH} --help 2>&1`
+    assert_includes out, "Usage: notes export [--marked | --failed | --assets]\n"
+    assert_match(/--assets\s+\S/, out)
+  end
+
   def test_norwegian_section_headings
     Dir.mktmpdir do |dir|
       md = export_with_sections(dir, "<div>Aktiv</div>", "NOTES_LANG" => "nb")
