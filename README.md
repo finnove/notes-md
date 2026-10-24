@@ -46,7 +46,8 @@ NoteStore.sqlite                 apple_notes.raw/  │    ~/notes/**/*.md
    sorted by folder in Notes.
 3. **Baseline.** `notes baseline` builds every note exactly as the export would,
    into `~/notes.baseline`, without touching `~/notes`. `git diff` there shows what
-   a code change does before the real files are rebuilt.
+   a code change does before the real files are rebuilt, and the last line how
+   many notes fail the check, now and before.
 
 ## The md files
 

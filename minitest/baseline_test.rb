@@ -64,11 +64,11 @@ class BaselineTest < Minitest::Test
     baseline_md.sub(NotesCommon::FRONTMATTER, "").delete_prefix("\n")
   end
 
-  def run_baseline(*args)
+  def run_baseline(*args, input: "")
     out, @status = Open3.capture2e(
       { "NOTES_ROOT" => @root, "NOTES_RAW_CACHE" => @raw, "NOTES_BASELINE" => @baseline, "NOTES_DB" => @db,
         "LANG" => "en_US.UTF-8", "LC_ALL" => "en_US.UTF-8" },
-      "ruby", File.expand_path(SCRIPT, __dir__), *args
+      "ruby", File.expand_path(SCRIPT, __dir__), *args, stdin_data: input
     )
     out.force_encoding("UTF-8")
   end
@@ -150,11 +150,49 @@ class BaselineTest < Minitest::Test
     assert_equal "---\nnote_id: #{UUID}\n---\n\nRedigert\n", File.read(md)
   end
 
-  def test_shows_progress_every_100_notes
-    100.times { |i| File.write(File.join(@raw, "#{i}.html"), "<div>Hei</div>") }
+  # Notes in the cache and the database, with one note that fails the check.
+  def add_many_notes(count, failing: 0)
+    db = SQLite3::Database.new @db
+    count.times do |i|
+      id = format("00000000-0000-0000-0000-%012d", i)
+      html = i < failing ? "<div>Hei</div><!-- https://x.no/borte -->" : "<div>Hei</div>"
+      File.write(File.join(@raw, "#{id}.html"), html)
+      db.execute "INSERT INTO ZICCLOUDSYNCINGOBJECT (ZIDENTIFIER, ZCREATIONDATE3) VALUES (?, 536500000.0)", [id.upcase]
+    end
+    db.close
+  end
+
+  # The progress line counts the failures so far, so a broken change can be
+  # stopped early.
+  # From the first failure on, every progress line shows the count.
+  def test_shows_progress_and_failures_every_100_notes
+    add_many_notes(200, failing: 1)
     out = run_baseline
     assert @status.success?, out
-    assert_includes out, "[100/100] converted"
+    assert_includes out, "[100/200] converted, 1 failed\n"
+    assert_includes out, "[200/200] converted, 1 failed\n"
+  end
+
+  def test_progress_without_failures_has_no_count
+    add_many_notes(100)
+    out = run_baseline
+    assert_includes out, "[100/100] converted\n"
+  end
+
+  # Ctrl-C stops cleanly, without a stack trace.
+  def test_interrupt_stops_cleanly
+    add_many_notes(400)
+    env = { "NOTES_ROOT" => @root, "NOTES_RAW_CACHE" => @raw, "NOTES_BASELINE" => @baseline, "NOTES_DB" => @db,
+            "LANG" => "en_US.UTF-8", "LC_ALL" => "en_US.UTF-8" }
+    out = +""
+    Open3.popen2e(env, "ruby", File.expand_path(SCRIPT, __dir__)) do |_, io, thr|
+      out << io.gets.to_s until out.include?("converted") || io.eof?
+      Process.kill("INT", thr.pid)
+      out << io.read
+      refute thr.value.success?
+    end
+    assert_includes out, "Aborted."
+    refute_match(/\.rb:\d+:in /, out)
   end
 
   def test_missing_baseline_dir_aborts
@@ -183,6 +221,90 @@ class BaselineTest < Minitest::Test
     commit_baseline
     out = run_baseline
     assert @status.success?, out
+  end
+
+  # The last line counts the notes that fail the check, before and now, so a
+  # code change that breaks notes shows before ~/notes is rebuilt.
+  def test_counts_notes_that_fail_the_check
+    add_plain_note("<div>Hei</div><!-- https://x.no/borte -->")
+    out = run_baseline
+    assert @status.success?, out
+    assert out.end_with?("1 note(s) fail the check (was 0).\n"), out
+    commit_baseline
+    add_plain_note("<div>Hei</div>")
+    out = run_baseline
+    assert out.end_with?("0 note(s) fail the check (was 1).\n"), out
+  end
+
+  # Two notes, one that fails the check; a committed baseline of both, with a
+  # mark in the file of the note that passes, to see whether it is rebuilt.
+  def baseline_with_one_failure
+    add_many_notes(2, failing: 1)
+    run_baseline
+    ok = File.join(@baseline, format("00000000-0000-0000-0000-%012d.md", 1))
+    File.write(ok, File.read(ok) + "merke\n")
+    File.write(File.join(@baseline, ".fingerprint"), "old")
+    commit_baseline
+    ok
+  end
+
+  # With notes that fail the check, it asks to rebuild only those first.
+  def test_rebuilds_only_the_failed_notes
+    ok = baseline_with_one_failure
+    out = run_baseline(input: "y\n")
+    assert @status.success?, out
+    assert_includes out, "1 note(s) fail the check. Rebuild those first? [Y/n] "
+    assert_includes out, "1 note(s) fail the check (was 1).\n1 still fail. Rebuild all notes anyway? [y/N] "
+    assert_includes File.read(ok), "merke", "a passing note was rebuilt"
+    assert_equal "old", File.read(File.join(@baseline, ".fingerprint")), "a partial baseline is not current"
+  end
+
+  # Notes that still fail can be known (waiting for a decision), so it also
+  # offers to rebuild all, with no as the default.
+  def test_rebuild_all_anyway_while_notes_still_fail
+    ok = baseline_with_one_failure
+    out = run_baseline(input: "y\ny\n")
+    assert @status.success?, out
+    refute_includes File.read(ok), "merke"
+    assert_equal NotesCommon.conversion_fingerprint, File.read(File.join(@baseline, ".fingerprint"))
+    assert out.end_with?("1 note(s) fail the check (was 1).\n"), out
+  end
+
+  # When the failed notes pass, it asks to rebuild all the others too.
+  def test_asks_to_rebuild_all_when_the_failed_pass
+    ok = baseline_with_one_failure
+    File.write(File.join(@raw, format("00000000-0000-0000-0000-%012d.html", 0)), "<div>Hei</div>")
+    out = run_baseline(input: "y\ny\n")
+    assert @status.success?, out
+    assert_includes out, "0 note(s) fail the check (was 1).\nAll pass. Rebuild all notes? [Y/n] "
+    refute_includes File.read(ok), "merke"
+    assert_equal NotesCommon.conversion_fingerprint, File.read(File.join(@baseline, ".fingerprint"))
+    assert out.end_with?("0 note(s) fail the check (was 1).\n"), out
+  end
+
+  def test_no_to_rebuild_all_keeps_the_rest
+    ok = baseline_with_one_failure
+    File.write(File.join(@raw, format("00000000-0000-0000-0000-%012d.html", 0)), "<div>Hei</div>")
+    out = run_baseline(input: "y\nn\n")
+    assert @status.success?, out
+    assert_includes File.read(ok), "merke"
+    assert_equal "old", File.read(File.join(@baseline, ".fingerprint"))
+  end
+
+  def test_n_rebuilds_all_notes
+    ok = baseline_with_one_failure
+    out = run_baseline(input: "n\n")
+    assert @status.success?, out
+    refute_includes File.read(ok), "merke"
+    assert_equal NotesCommon.conversion_fingerprint, File.read(File.join(@baseline, ".fingerprint"))
+  end
+
+  def test_no_question_without_failed_notes
+    add_many_notes(2)
+    run_baseline
+    commit_baseline
+    out = run_baseline(input: "y\n")
+    refute_includes out, "Rebuild only those"
   end
 
   def test_baseline_must_be_git_repo

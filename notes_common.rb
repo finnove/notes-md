@@ -62,13 +62,17 @@ module NotesCommon
     # before a quote) the quote is swallowed in markdown_strict conversion.
     # Replace with a placeholder before pandoc, and swap back afterwards.
     html = html.gsub('\\"', "\u{F8FA}").gsub("\\'", "\u{F8FB}")
+    # The same for a backslash before any other ASCII punctuation (\- in a list
+    # of regex characters lost the -): the backslash becomes a placeholder,
+    # and is written back as an escaped backslash.
+    html = html.gsub(/\\(?=[!-\/:-@\[-`{-~])/, "\u{F8F6}")
     md_body, pandoc_err, pandoc_status = Open3.capture3(
       "pandoc", "-f", "html", "-t", "markdown_strict+hard_line_breaks+strikeout", "--wrap=none",
       stdin_data: html
     )
     return [nil, raw_html, pandoc_err.strip] unless pandoc_status.success?
     md_body = md_body.gsub(INVISIBLE, "")
-    md_body = md_body.gsub("\u{F8FA}", '\\"').gsub("\u{F8FB}", "\\'")
+    md_body = md_body.gsub("\u{F8FA}", '\\"').gsub("\u{F8FB}", "\\'").gsub("\u{F8F6}", "\\\\\\\\")
     # The control characters have no visible form in Notes — remove them so
     # they do not pollute the markdown export.
     md_body = md_body.gsub(CONTROL, "")
@@ -198,7 +202,8 @@ module NotesCommon
     code_blocks = []
     html = mask(html, %r{<(pre|code)\b[^>]*>.*?</\1>}m, "\u{F8F9}", code_blocks)
     html = mask(html, %r{<font face="Courier"[^>]*>.*?</font>}m, "\u{F8F9}", code_blocks)
-    html = html.gsub(%r{(https?://[^\s"'<>]+)}) { |url|
+    # A URL ends at whitespace, also a line separator (U+2028) or hard space.
+    html = html.gsub(%r{(https?://[^\s\p{Z}"'<>]+)}) { |url|
       # A closing ) is only part of the URL when it closes a ( in the URL.
       stripped = repeat_until_stable(url.dup) { |u|
         u = u.sub(/[\].,;:!?]+\z/, "").sub(/&(?:quot|amp|lt|gt|apos|nbsp|oslash|aring|Aring|aelig|AElig);?\z/, "")
@@ -252,11 +257,11 @@ module NotesCommon
     html_for_urls = raw_html.gsub(%r{<font face="Courier"[^>]*>.*?</font>}m, "")
                             .gsub(%r{<code>.*?</code>}m, "")
                             .gsub(%r{<div>[^<]*&lt;[a-zA-Z/][^<]*</div>}, "")
-    html_urls = html_for_urls.scan(/https?:\/\/[^\s"'<>]+/)
+    html_urls = html_for_urls.scan(/https?:\/\/[^\s\p{Z}"'<>]+/)
                         .map { |u| url_trim.call(Nokogiri::HTML::DocumentFragment.parse(u).text) }
                         .sort.uniq
     # Balanced parentheses belong to the URL; an unbalanced ) ends a link target.
-    md_urls = md_content.scan(/https?:\/\/(?:[^\s"'<>()\]]|\([^\s"'<>()\]]*\))+/)
+    md_urls = md_content.scan(/https?:\/\/(?:[^\s\p{Z}"'<>()\]]|\([^\s\p{Z}"'<>()\]]*\))+/)
                         .map { |u| url_trim.call(u.gsub(/\\([^\w\s]|_)/, '\1').gsub(/%22\z/, "")) }
                         .sort.uniq
     missing_urls = html_urls - md_urls
@@ -280,19 +285,23 @@ module NotesCommon
     # and drops the content — the markdown side keeps it and text_match=false.
     str = str.gsub("&lt;", "\u{F8FE}").gsub("&gt;", "\u{F8FD}")
     doc = Nokogiri::HTML(str)
-    # "[ ]" typed at the start of a list item is ignored, as strip_markdown
-    # ignores the checkbox after a list marker.
+    # "[ ]" and "# " typed at the start of a list item are ignored, as
+    # strip_markdown ignores a checkbox or heading mark after a list marker.
     doc.css("li").each do |li|
       first = li.xpath(".//text()").find { |t| !t.text.strip.empty? }
-      first.content = first.text.sub(/\A(\s*)\[[ xX]\] +/, '\1') if first
+      first.content = first.text.sub(/\A(\s*)\[[ xX]\] +/, '').sub(/\A(\s*)#+ +/, '') if first
     end
     doc.css("br").each { |n| n.replace("\n") }
+    # A sublist starts on a new line, also right after text in a list item.
+    doc.css("ul, ol").each { |n| n.add_previous_sibling("\n") }
     doc.css("div, p, li, h1, h2, h3, h4, h5, h6, tr, td, th, pre").each { |n| n.add_next_sibling("\n") }
     text = Nokogiri::HTML::DocumentFragment.parse(doc.text).text
     text = text.gsub("\u{F8FE}", "<").gsub("\u{F8FD}", ">")
     text = text.gsub(INVISIBLE, "")
-    text.gsub(/^(\s*[-*+] +)+(?=\S)/, "")
-        .gsub(/^\s*(\d+\.\s+)+/, "")
+    # > and ~~ typed in Notes are removed as strip_markdown removes them, and
+    # in the same order: ~~ first, so a number right after it starts the line.
+    # A line of only # is an empty heading to strip_markdown, which removes it.
+    strip_list_markers(text.gsub(/~~/, "").gsub(/^[ \t]*> (?:#+[ \t]+)?/, "").gsub(/^[ \t]*#+[ \t]*$/, ""))
         .gsub(/\*{1,3}/, "")
         .gsub(/`{1,3}/, "")
         .gsub(/(^|(?<=\s))_{1,3}((?=\s)|$)/, "")
@@ -303,24 +312,42 @@ module NotesCommon
     str = str.gsub(/\A---\R.*?\R---\R/m, "")
     str = str.gsub(INVISIBLE, "")
     str = str.gsub(/\[([^\]]+)\]\([^)]+\)/, '\1')
+    # The quote mark first, so a heading in a quote (> # x) loses its mark too.
+    str = str.gsub(/^[ \t]*> /, "")
     str = str.gsub(/^#+\s+/, "")
+    # A line left with only # (a heading that is only #) goes, as strip_html
+    # removes a line of only #.
+    str = str.gsub(/^[ \t]*#+[ \t]*$/, "")
     str = str.gsub(/`{1,3}/, "")
     str = str.gsub(/\*{1,3}/, "")
     str = str.gsub(/~~/, "")
     str = str.gsub(/(^|(?<=\s))_{1,3}((?=\s)|$)/, "")
-    str = str.gsub(/^> /, "")
-    # A checkbox after the list marker comes from the note data, not the HTML.
-    str = str.gsub(/^(\s*[-*+] +(\[[ xX]\] +)?)+(?=\S)/, "")
-    str = str.gsub(/^\s*(\d+\.\s+)+/, "")
+    str = strip_list_markers(str)
     str = str.gsub(/^```.*$/, "")
-    str = str.gsub(/\\([^\w\s]|_)/, '\1')
+    # Again after the escapes are gone, as the note side sees plain text: a
+    # "- " typed in a numbered item is "1. \- x" in the md file.
+    str = strip_list_markers(str.gsub(/\\([^\w\s]|_)/, '\1'))
     str = str.gsub(/<(https?:\/\/[^>]+)>/, '\1')
     str
   end
 
+  # List markers at the start of a line, removed the same way from the note
+  # and the md file: -, *, + or a number, also several in a row (a bullet in a
+  # numbered item), each maybe followed by a checkbox, which comes from the
+  # note data, or by a heading mark (a heading in a list item). A marker alone
+  # on a line is an empty item, or an item whose text
+  # starts on the next line. Notes puts tabs around the number of a numbered
+  # checklist item, so tabs count as spaces.
+  def strip_list_markers(text)
+    text.gsub(/^([ \t]*(?:[-*+]|\d+\.)[ \t]+(?:\[[ xX]\][ \t]+)?(?:#+[ \t]+)?)+(?=\S)/, "")
+        .gsub(/^([ \t]*(?:[-*+]|\d+\.)[ \t]*(?:\[[ xX]\][ \t]*)?)+$/, "")
+  end
+
   # \s is only ASCII in Ruby; \p{Z} also counts a hard space (&nbsp;) as a space.
+  # Format characters (\p{Cf}, such as a zero-width joiner) are invisible and
+  # left out: a line with only such characters counts as blank in the export.
   def normalize(str)
-    str.gsub(/[\s\p{Z}]+/, " ").strip
+    str.gsub(/\p{Cf}/, "").gsub(/[\s\p{Z}]+/, " ").strip
   end
 
   # --- Dates and filenames ---

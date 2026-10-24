@@ -184,6 +184,29 @@ class NotesCommonTest < Minitest::Test
     assert_includes out, '<a href="http://example.org/foo">http://example.org/foo</a>'
   end
 
+  # pandoc 3.8.3 swallows the character after a backslash when it is
+  # punctuation (\- became \ in a list of regex characters). The text must
+  # come through whole with every pandoc version.
+  def test_backslash_before_punctuation_keeps_the_character
+    html = "<div>!¡&quot;#$%'()*+,\\-./:;&lt;=&gt;¿?@[\\]^_`{|}~</div><div>a \\* b \\. c \\# d</div>"
+    md, raw, _ = NotesCommon.html_to_markdown(html)
+    assert_includes md, "+,\\-./", md
+    assert_includes md, "a \\* b \\. c \\# d", md
+    assert_equal "pass", NotesCommon.verify(raw, md)[:status], md
+  end
+
+  # A URL ends at a line separator (U+2028, used by Notes for line breaks):
+  # the text after it is not taken into the link, and the quote is not
+  # written as %22.
+  def test_url_ends_at_line_separator
+    html = "<div>se https://x.no/a/b/  &quot;Hei du&quot; sa han</div>"
+    md, raw, _ = NotesCommon.html_to_markdown(html)
+    assert_includes md, "<https://x.no/a/b/> "
+    assert_includes md, "\"Hei du\" sa han"
+    refute_includes md, "%22"
+    assert_equal "pass", NotesCommon.verify(raw, md)[:status]
+  end
+
   def test_url_already_in_anchor_not_double_wrapped
     html = '<a href="http://example.com">http://example.com</a>'
     out  = NotesCommon.transform_html(html)
@@ -522,6 +545,35 @@ class NotesRegressionTest < Minitest::Test
   # "[ ]" typed as text in a list item in Notes is ignored on both sides.
   def test_verify_checkbox_text_typed_in_notes
     assert_equal "pass", NotesCommon.verify("<ul><li>[ ] Melk</li></ul>", "- [ ] Melk\n")[:status]
+  end
+
+  # List markers are removed the same way on both sides. Each case is a note
+  # in Notes, converted the way the export converts it, that failed the check.
+  def test_verify_list_markers_alike_on_both_sides
+    { "typed - [ ] in a paragraph" => "<div>Liste</div><div>- [ ] Melk</div><div>- [x] Brød</div>",
+      "empty numbered item at the end" => "<div>a</div><ol><li>b</li><li><br></li></ol>",
+      "bullet inside a numbered item" => "<ol><li><ul><li>Melk</li></ul></li></ol>",
+      "typed - in a numbered item" => "<ol><li>- Melk</li></ol>",
+      "text right before a sublist" => "<ol><li>a<ul><li>b</li></ul></li></ol>",
+      "tabs around a number in a list item" => "<ul>\n<li>\t1.\t12% Melk</li>\n<li>\t10.\tBrød</li>\n</ul>",
+      "~~ typed as text" => "<div>i 2020 ~~1. Melk. Brød~~ ok</div>",
+      "~~ typed at the start of a line" => "<div>a</div><div>~~1. Melk~~ ok</div>",
+      "> typed at the start of a line" => "<div>aaa</div><div>&gt; bb ccc</div>",
+      "> typed after spaces" => "<div>aaa</div><div>     &gt; bb ccc</div>",
+      "invisible line before a heading" => "<div>aaa</div><div>‍</div><h2>Bbb</h2><div>c</div>",
+      "invisible line after a heading" => "<h2>Aaa</h2><div>‍</div><div>bbb</div>",
+      "list item starting with a line break" => "<ul><li><br>aaa</li></ul>",
+      "heading in a list item" => "<div>tekst (~2 dager)</div><ul><li><h1>Tittel en</h1></li></ul>",
+      "h2 in a list item" => "<ul><li>a</li><li><h2>Tittel</h2></li></ul>",
+      "heading in a quote" => "<blockquote><h1>Tittel</h1></blockquote>",
+      "# typed in a list item" => "<ul><li># x</li></ul>",
+      "heading that is only #" => "<div>a (~2 dager)</div><div><h2>#</h2></div><div>b</div>",
+      "##### alone on a line" => "<div>Tekst.</div><div><br></div><div>#####</div><div>aa bbb.</div>",
+      "# alone in a code example" => "<div>Eksempel:</div><div>#</div><div>#     aaa:</div><div>#       bbb: ccc</div>",
+      "sublist item starting with a line break" => "<div>x</div><ul><li>a</li><ul><li><br>bbb</li></ul></ul>" }.each do |name, html|
+      md, = NotesCommon.html_to_markdown(html)
+      assert_equal "pass", NotesCommon.verify(html, md)[:status], "#{name}: #{md.inspect}"
+    end
   end
 
   def test_verify_ignores_checkboxes
