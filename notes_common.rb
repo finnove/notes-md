@@ -112,10 +112,11 @@ module NotesCommon
     str.gsub(/&(lt|gt|amp|quot)(?!;)/, '&\1;')
   end
 
-  # Tables become one line per cell: Notes tables render badly as markdown tables.
+  # Tables become one line per cell, with a blank line between the rows:
+  # Notes tables render badly as markdown tables.
   def fold_tables(html)
     html.gsub(/<table.*?<\/table>/m) { |table|
-      Nokogiri::HTML.fragment(table).css("td").map(&:inner_html).join("\n")
+      Nokogiri::HTML.fragment(table).css("tr").map { |tr| tr.css("td").map(&:inner_html).join("\n") }.join("\n<div><br></div>\n")
     }
   end
 
@@ -308,8 +309,9 @@ module NotesCommon
     str
   end
 
+  # \s is only ASCII in Ruby; \p{Z} also counts a hard space (&nbsp;) as a space.
   def normalize(str)
-    str.gsub(/\s+/, " ").strip
+    str.gsub(/[\s\p{Z}]+/, " ").strip
   end
 
   # --- Dates and filenames ---

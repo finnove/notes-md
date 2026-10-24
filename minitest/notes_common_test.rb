@@ -500,6 +500,24 @@ class NotesRegressionTest < Minitest::Test
     assert_match(/celle2/, md)
   end
 
+  # A table becomes one cell per line, with a blank line between the rows.
+  def test_table_blank_line_between_rows
+    td = ->(c) { "<td valign=\"top\"><div>#{c}</div></td>" }
+    rows = [%w[Frukt Pris], %w[Eple 10], %w[Banan 5]]
+    html = "<div>Liste</div><div><table><tbody>" + rows.map { |r| "<tr>#{r.map(&td).join}</tr>" }.join + "</tbody></table></div><div>Etter</div>"
+    assert_equal "Liste\n\nFrukt\nPris\n\nEple\n10\n\nBanan\n5\n\nEtter", html2md(html)
+  end
+
+  # A hard space (&nbsp;) counts as a space in the check: a cell or last line
+  # with only &nbsp; is dropped from the md file, and the note must still pass.
+  def test_verify_treats_nbsp_as_space
+    ["<table><tr><td><div>A</div></td><td><div>&nbsp;</div></td></tr></table>",
+     "<div>A</div><div>&nbsp;</div>"].each do |html|
+      md, = NotesCommon.html_to_markdown(html)
+      assert_equal "pass", NotesCommon.verify(html, md)[:status], html
+    end
+  end
+
   # 20. fix_entities adds ; after `&lt`/`&gt`/`&amp`/`&quot` without ;.
   def test_fix_entities_adds_semicolon
     fixed = NotesCommon.fix_entities('&ltfoo&gt og &amp og &quot')

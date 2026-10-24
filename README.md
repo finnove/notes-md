@@ -70,6 +70,7 @@ Content converted from Notes …
 
 - Filename: `YYYY-MM-DD title.md`, lowercase.
 - Frontmatter fields you add yourself are kept on rebuild.
+- Tables become one cell per line, with a blank line between the rows.
 - `NOTES_LANG=nb` gives the headings `## Vedlegg` and `## Interne lenker`.
 
 | `export` | Meaning                                              |
