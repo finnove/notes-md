@@ -367,6 +367,9 @@ class ExportTest < Minitest::Test
   def baseline_with(env, fingerprint)
     FileUtils.mkdir_p env["NOTES_BASELINE"]
     File.write(File.join(env["NOTES_BASELINE"], ".fingerprint"), fingerprint)
+    system("git", "-C", env["NOTES_BASELINE"], "init", "-q")
+    system("git", "-C", env["NOTES_BASELINE"], "add", "-A")
+    system("git", "-C", env["NOTES_BASELINE"], "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "baseline")
   end
 
   def test_no_to_baseline_continues_export

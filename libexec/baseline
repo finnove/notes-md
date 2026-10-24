@@ -20,6 +20,7 @@ parser = OptionParser.new do |opts|
                 "your archive. Without it, you only find out when your real md files change.\n\n" \
                 "Converts the whole local copy to the baseline folder (~/notes.baseline), one <uuid>.md per note.\n" \
                 "See the changes with git diff in the folder, and commit to accept them as the new baseline.\n" \
+                "The folder must be a git repo; it stops if the previous baseline is not committed or discarded.\n" \
                 "The md files in ~/notes are not touched.\n\n" \
                 "Also records a fingerprint of the conversion code and pandoc version in .fingerprint.\n" \
                 "notes export --marked and --failed offer to run notes baseline when the conversion has changed since.\n\n" \
@@ -36,6 +37,16 @@ end
 parser.parse!
 
 abort "Does not exist: #{NotesCommon::BASELINE_DIR}" unless Dir.exist?(NotesCommon::BASELINE_DIR)
+
+# The previous baseline must be committed or discarded first, so one diff
+# shows one code change.
+shown = NotesCommon::BASELINE_DIR.sub(/\A#{Regexp.escape(Dir.home)}(?=\/|\z)/, "~")
+top, git_ok = Open3.capture2e("git", "-C", NotesCommon::BASELINE_DIR, "rev-parse", "--show-toplevel")
+unless git_ok.success? && File.realpath(top.chomp) == File.realpath(NotesCommon::BASELINE_DIR)
+  abort "#{shown} is not a git repo. Run: git -C #{shown} init"
+end
+changes, _ = Open3.capture2("git", "-C", NotesCommon::BASELINE_DIR, "status", "--porcelain")
+abort "#{shown} has uncommitted changes. Commit or discard them first (git -C #{shown} status)." unless changes.empty?
 
 db = NotesCommon.open_db
 

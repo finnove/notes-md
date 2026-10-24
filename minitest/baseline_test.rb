@@ -19,6 +19,7 @@ class BaselineTest < Minitest::Test
     @baseline = File.join(@dir, "notes.baseline")
     @db       = File.join(@dir, "NoteStore.sqlite")
     FileUtils.mkdir_p [@raw, @baseline]
+    system("git", "-C", @baseline, "init", "-q")
     db = SQLite3::Database.new @db
     db.execute "CREATE TABLE ZICCLOUDSYNCINGOBJECT (Z_PK INTEGER PRIMARY KEY, ZIDENTIFIER TEXT, ZISPASSWORDPROTECTED INTEGER, ZALTTEXT TEXT)"
     db.execute "CREATE TABLE ZICNOTEDATA (Z_PK INTEGER PRIMARY KEY, ZNOTE INTEGER, ZDATA BLOB)"
@@ -41,6 +42,12 @@ class BaselineTest < Minitest::Test
 
   def add_plain_note(html)
     File.write(File.join(@raw, "#{UUID}.html"), html)
+  end
+
+  # Commits everything in the baseline folder, as the user does after a diff.
+  def commit_baseline
+    system("git", "-C", @baseline, "add", "-A")
+    system("git", "-C", @baseline, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "baseline")
   end
 
   def baseline_md
@@ -89,6 +96,7 @@ class BaselineTest < Minitest::Test
 
   def test_fingerprint_survives_cleanup
     File.write(File.join(@baseline, ".fingerprint"), "old")
+    commit_baseline
     add_plain_note("<div>Hei</div>")
     run_baseline
     assert File.exist?(File.join(@baseline, ".fingerprint"))
@@ -111,12 +119,14 @@ class BaselineTest < Minitest::Test
   def test_overwrites_previous_conversion
     add_plain_note("<div>Hei</div>")
     File.write(File.join(@baseline, "#{UUID}.md"), "Gammel\n")
+    commit_baseline
     run_baseline
     assert_equal "Hei\n", baseline_md
   end
 
   def test_removes_baseline_without_cache
     File.write(File.join(@baseline, "borte.md"), "Borte\n")
+    commit_baseline
     out = run_baseline
     assert @status.success?, out
     refute File.exist?(File.join(@baseline, "borte.md"))
@@ -144,5 +154,32 @@ class BaselineTest < Minitest::Test
     refute @status.success?, out
     assert_match(/notes\.baseline/, out)
     refute Dir.exist?(@baseline)
+  end
+
+  # The previous baseline must be committed or discarded first, so one diff
+  # shows one code change.
+  def test_uncommitted_baseline_aborts
+    add_plain_note("<div>Hei</div>")
+    File.write(File.join(@baseline, "#{UUID}.md"), "Ikke committet\n")
+    out = run_baseline
+    refute @status.success?, out
+    assert_equal "#{@baseline} has uncommitted changes. Commit or discard them first (git -C #{@baseline} status).\n", out
+    assert_equal "Ikke committet\n", baseline_md
+  end
+
+  def test_runs_again_after_commit
+    add_plain_note("<div>Hei</div>")
+    run_baseline
+    commit_baseline
+    out = run_baseline
+    assert @status.success?, out
+  end
+
+  def test_baseline_must_be_git_repo
+    FileUtils.rm_rf File.join(@baseline, ".git")
+    add_plain_note("<div>Hei</div>")
+    out = run_baseline
+    refute @status.success?, out
+    assert_equal "#{@baseline} is not a git repo. Run: git -C #{@baseline} init\n", out
   end
 end

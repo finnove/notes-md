@@ -70,7 +70,17 @@ Content converted from Notes …
 
 - Filename: `YYYY-MM-DD title.md`, lowercase.
 - Frontmatter fields you add yourself are kept on rebuild.
-- Tables become one cell per line, with a blank line between the rows.
+- Tables are deliberately not markdown tables: each cell gets its own line,
+  with a blank line between the rows. A table with the rows Fruit/Price and
+  Apple/10 becomes:
+
+  ```
+  Fruit
+  Price
+
+  Apple
+  10
+  ```
 - `NOTES_LANG=nb` gives the headings `## Vedlegg` and `## Interne lenker`.
 
 | `export` | Meaning                                              |
@@ -104,7 +114,11 @@ git diff                   # 4. see what changed, then commit or discard
 notes health               # 5. check that everything fits together
 ```
 
-Commit `~/notes` before exporting, so everything can be rolled back.
+Commit `~/notes` before exporting, so everything can be rolled back. A git UI
+such as [lazygit](https://github.com/jesseduffield/lazygit) makes it easy to
+keep the changes you want and discard the rest. The same goes for
+`~/notes.baseline`: `notes baseline` stops until the previous one is committed
+or discarded.
 
 ### Example: fixing a conversion error
 
