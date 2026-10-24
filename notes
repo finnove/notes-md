@@ -12,6 +12,7 @@ COMMANDS = {
   "sync"     => "Keep a local copy of every note, so exports run offline",
   "prune"    => "Delete the notes in Notes that you deleted from ~/notes",
   "baseline" => "See what a code change does to every note before it touches ~/notes",
+  "report"   => "Report notes that fail the check, without their text, for an issue",
 }
 
 parser = OptionParser.new do |opts|
@@ -44,7 +45,7 @@ end
 rescue LoadError
   abort "notes: Ruby gem #{gem} is missing. Install it with: bundle install (in #{__dir__})"
 end
-if %w[export baseline].include?(command) &&
+if %w[export baseline report].include?(command) &&
    ENV["PATH"].to_s.split(File::PATH_SEPARATOR).none? { |dir| File.executable?(File.join(dir, "pandoc")) }
   abort "notes: pandoc not found. Install it with: brew install pandoc"
 end

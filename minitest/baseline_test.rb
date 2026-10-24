@@ -229,12 +229,14 @@ class BaselineTest < Minitest::Test
     add_plain_note("<div>Hei</div><!-- https://x.no/borte -->")
     out = run_baseline
     assert @status.success?, out
-    assert out.end_with?("1 note(s) fail the check (was 0).\n"), out
+    assert out.end_with?("1 note(s) fail the check (was 0).\n#{REPORT_HINT}"), out
     commit_baseline
     add_plain_note("<div>Hei</div>")
     out = run_baseline
     assert out.end_with?("0 note(s) fail the check (was 1).\n"), out
   end
+
+  REPORT_HINT = "See why with notes report --baseline; it shows no text from the notes.\n"
 
   # Two notes, one that fails the check; a committed baseline of both, with a
   # mark in the file of the note that passes, to see whether it is rebuilt.
@@ -255,6 +257,7 @@ class BaselineTest < Minitest::Test
     assert @status.success?, out
     assert_includes out, "1 note(s) fail the check. Rebuild those first? [Y/n] "
     assert_includes out, "1 note(s) fail the check (was 1).\n1 still fail. Rebuild all notes anyway? [y/N] "
+    assert out.end_with?(REPORT_HINT), out
     assert_includes File.read(ok), "merke", "a passing note was rebuilt"
     assert_equal "old", File.read(File.join(@baseline, ".fingerprint")), "a partial baseline is not current"
   end
@@ -267,7 +270,7 @@ class BaselineTest < Minitest::Test
     assert @status.success?, out
     refute_includes File.read(ok), "merke"
     assert_equal NotesCommon.conversion_fingerprint, File.read(File.join(@baseline, ".fingerprint"))
-    assert out.end_with?("1 note(s) fail the check (was 1).\n"), out
+    assert out.end_with?("1 note(s) fail the check (was 1).\n#{REPORT_HINT}"), out
   end
 
   # When the failed notes pass, it asks to rebuild all the others too.

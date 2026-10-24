@@ -105,6 +105,8 @@ Content converted from Notes …
 | `notes health`   | Find broken, orphaned and shared attachments, duplicate notes  |
 | `notes prune`    | Delete the notes in Notes that you deleted from `~/notes`      |
 | `notes baseline` | Convert every note to `~/notes.baseline` to test a code change |
+| `notes report`   | Report the notes with `export: fail`, text masked, for an issue |
+| `--baseline`     | The notes that fail in `~/notes.baseline` instead           |
 
 ## Typical workflow
 
@@ -196,6 +198,12 @@ The tests use their own database and temporary folders, never real notes.
   change it.
 - Dates in titles are recognised with Norwegian month and weekday names
   ("2. januar 2025", "mandag").
+
+## Reporting a note that fails
+
+Run `notes report` and paste the output into a new issue. It has no text from
+your notes: letters become `a`, digits `0`. Notes that fail in the baseline:
+`notes report --baseline`.
 
 ## License
 

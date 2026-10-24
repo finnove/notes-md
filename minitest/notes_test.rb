@@ -8,7 +8,7 @@ SCRIPT = "../notes"
 class NotesTest < Minitest::Test
   CMD = File.expand_path("../notes", __dir__)
   # In the order they are used.
-  COMMANDS = %w[export compare health sync prune baseline]
+  COMMANDS = %w[export compare health sync prune baseline report]
 
   def run_cmd(*args)
     out, status = Open3.capture2e({ "LANG" => "en_US.UTF-8", "LC_ALL" => "en_US.UTF-8" }, "ruby", CMD, *args)
@@ -72,7 +72,7 @@ class NotesTest < Minitest::Test
 
   def test_missing_pandoc_gives_one_line
     Dir.mktmpdir do |dir|
-      %w[export baseline].each do |c|
+      %w[export baseline report].each do |c|
         out, status = run_with({ "PATH" => path_without_pandoc(File.join(dir, c).tap { |d| Dir.mkdir(d) }) }, c)
         assert_equal 1, status.exitstatus, out
         assert_equal "notes: pandoc not found. Install it with: brew install pandoc\n", out
