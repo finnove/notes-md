@@ -742,6 +742,16 @@ class ExportTest < Minitest::Test
     end
   end
 
+  def test_assets_shows_progress_every_100_files
+    Dir.mktmpdir do |dir|
+      env = assets_env(dir)
+      100.times { |i| File.write(File.join(dir, "notes", "n#{i}.md"), "---\nnote_id: id#{i}\n---\n\nx\n") }
+      commit_all(dir)
+      out, _ = run_export(env, dir, "--assets")
+      assert_includes out, "[100/100] checked\n"
+    end
+  end
+
   def test_help_lists_assets
     out = `ruby #{SCRIPT_PATH} --help 2>&1`
     assert_includes out, "Usage: notes export [--marked | --failed | --assets]\n"
