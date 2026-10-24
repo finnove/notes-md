@@ -44,8 +44,8 @@ NoteStore.sqlite                 apple_notes.raw/  │    ~/notes/**/*.md
 2. **md files.** `notes export` syncs, builds md files for new notes and
    updates the ones you have not edited. New notes land in `~/notes/import`,
    sorted by folder in Notes.
-3. **Baseline.** `notes baseline` converts the whole cache the same way into
-   `~/notes.baseline`, without touching `~/notes`. `git diff` there shows what
+3. **Baseline.** `notes baseline` builds every note exactly as the export would,
+   into `~/notes.baseline`, without touching `~/notes`. `git diff` there shows what
    a code change does before the real files are rebuilt.
 
 ## The md files

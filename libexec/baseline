@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 # encoding: UTF-8
-# Converts the whole cache to the baseline folder, one <uuid>.md per note.
+# Converts the whole cache to the baseline folder, one <uuid>.md per note,
+# built exactly as notes export builds it.
 # The folder is outside ~/notes in its own git repo: `git diff` shows what a
 # code change did to the conversion, `git commit` accepts it as the new
 # baseline. The md files in ~/notes are not touched.
@@ -18,7 +19,8 @@ parser = OptionParser.new do |opts|
   opts.banner = "Usage: notes baseline\n\n" \
                 "Shows what a code change or a pandoc upgrade does to every note, before it touches\n" \
                 "your archive. Without it, you only find out when your real md files change.\n\n" \
-                "Converts the whole local copy to the baseline folder (~/notes.baseline), one <uuid>.md per note.\n" \
+                "Converts the whole local copy to the baseline folder (~/notes.baseline), one <uuid>.md per note,\n" \
+                "built exactly as notes export builds it; attachments are linked, not copied.\n" \
                 "See the changes with git diff in the folder, and commit to accept them as the new baseline.\n" \
                 "The folder must be a git repo; it stops if the previous baseline is not committed or discarded.\n" \
                 "The md files in ~/notes are not touched.\n\n" \
@@ -52,22 +54,24 @@ db = NotesCommon.open_db
 
 uuids = Dir.glob(File.join(NotesCommon::RAW_CACHE_DIR, "*.html")).map { |f| File.basename(f, ".html") }
 
+# Each file is built the way notes export builds it. Attachments are linked
+# but not copied: the check looks for the original file in Notes instead.
+original_exists = ->(_, src) { File.exist?(src) }
 uuids.each_with_index do |uuid, idx|
   puts "[#{idx + 1}/#{uuids.size}] converted" if (idx + 1) % 100 == 0
   raw = File.read(File.join(NotesCommon::RAW_CACHE_DIR, "#{uuid}.html"), encoding: "UTF-8")
-  md, _, err = NotesCommon.html_to_markdown(raw)
-  if err
-    warn "ERROR pandoc for #{uuid}: #{err}"
+  note_pk, cd_created = db.get_first_row("SELECT Z_PK, ZCREATIONDATE3 FROM ZICCLOUDSYNCINGOBJECT WHERE lower(ZIDENTIFIER) = ?", [uuid.downcase])
+  unless note_pk
+    warn "SKIPPING (not in DB): #{uuid}"
     next
   end
-
-  # Checkboxes are set by notes export from ZDATA. Locked notes have encrypted
-  # ZDATA. Link items are in the internal links section, which is not
-  # included here, so link text is not needed.
-  zdata = NotesCommon.note_zdata(db, uuid)
-  md, _ = NotesCommon.apply_checkboxes(md, zdata, ->(_) {}) if zdata
-
-  File.write(File.join(NotesCommon::BASELINE_DIR, "#{uuid}.md"), md + "\n")
+  built = NotesCommon.build_md(db, uuid, raw, note_pk: note_pk, created_date: NotesCommon.core_data_to_local_date(cd_created),
+                               ref_ok: original_exists)
+  if built[:error]
+    warn "ERROR pandoc for #{uuid}: #{built[:error]}"
+    next
+  end
+  File.write(File.join(NotesCommon::BASELINE_DIR, "#{uuid}.md"), built[:text])
 end
 
 (Dir.glob(File.join(NotesCommon::BASELINE_DIR, "*.md")).map { |f| File.basename(f, ".md") } - uuids).each do |uuid|

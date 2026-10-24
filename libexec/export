@@ -255,8 +255,6 @@ Signal.trap("INT") { interrupted = true }
 
 # Files whose body no longer matches the note_sum the export wrote.
 edited_by_hand = []
-# Frontmatter fields the export writes; all other fields are kept as they are.
-MANAGED_FIELDS = %w[created_at note_id tags export note_sum]
 
 candidates.each_with_index do |item, idx|
   if interrupted
@@ -312,98 +310,35 @@ candidates.each_with_index do |item, idx|
     md_path = File.join(export_dir_new, candidate)
   end
 
-  clean_body, raw_html, pandoc_err = NotesCommon.html_to_markdown(raw_body)
-  if pandoc_err
-    log "#{log_pos} ERROR pandoc for '#{title}': #{pandoc_err}"
-    next
-  end
-
-  internal_links = []
-  tags = []
-  db.execute("SELECT ZALTTEXT, ZTOKENCONTENTIDENTIFIER FROM ZICCLOUDSYNCINGOBJECT WHERE Z_ENT=9 AND ZTYPEUTI1='com.apple.notes.inlinetextattachment.link' AND ZNOTE1=?", note_pk).each do |r|
-    internal_links << "- #{r[0]} → #{r[1].sub(/\?.*/, '')}" if r[0] && r[1]
-  end
-  db.execute("SELECT ZALTTEXT FROM ZICCLOUDSYNCINGOBJECT WHERE ZTYPEUTI1='com.apple.notes.inlinetextattachment.hashtag' AND ZNOTE1=?", note_pk).each do |r|
-    tags << r[0].sub(/^#/, "") if r[0]
-  end
-  tags = tags.reject(&:empty?).uniq
-
-  # Attachments: the file is named after the attachment's UUID in Notes
-  # (<media_uuid>.<ext>), and the original name is the link text. The name is
-  # unique across asset folders.
+  # Attachments are copied to assets/ next to the md file when they are not
+  # there yet; the check then sees the file in place.
   export_dir = File.dirname(md_path)
   assets_dir = File.join(export_dir, "assets")
   existing_text = is_new ? "" : File.read(md_path)
-  image_exts = %w[.png .jpg .jpeg .heic .gif .tiff .webp]
-  saved_images = []
-  saved_files = []
-  pending_copies = []
-  NotesCommon.attachment_sources(db, note_pk).each do |media_uuid, src|
-    unless src
-      log "#{log_pos} ATTACHMENT NOT DOWNLOADED: #{md_path.sub("#{scan_root}/", '')} (#{media_uuid})"
-      next
-    end
-    ext = File.extname(src).downcase
-    safe_name = NotesCommon.asset_name(media_uuid, src)
-    pending_copies << [src, safe_name, ext]
-    # [, ] and \ in the original name are escaped so they do not break the markdown link.
-    label = File.basename(src).unicode_normalize(:nfc).gsub(/[\[\]\\]/) { "\\#{$&}" }
-    if image_exts.include?(ext)
-      saved_images << [label, safe_name]
-    else
-      saved_files << [label, safe_name]
-    end
-  end
-
-  # Repair missing assets on disk: copy from the Group Container if the file
-  # this note's ref points to does not exist in assets_dir.
   repaired_assets = 0
-  pending_copies.each do |src, safe_name, ext|
+  copy_asset = ->(safe_name, src) {
     dest = File.join(assets_dir, safe_name)
-    next if File.exist?(dest)
-    FileUtils.mkdir_p assets_dir
-    if ext == ".html"
-      File.write dest, NotesCommon.asset_data(src)
-    else
-      FileUtils.cp src, dest
+    unless File.exist?(dest)
+      FileUtils.mkdir_p assets_dir
+      if File.extname(src).downcase == ".html"
+        File.write dest, NotesCommon.asset_data(src)
+      else
+        FileUtils.cp src, dest
+      end
+      repaired_assets += 1
     end
-    repaired_assets += 1
-  end
-
-  image_lines = saved_images.map { |text, n| "![#{text}](assets/#{n})" }
-  file_lines  = saved_files.map  { |text, n| "[#{text}](assets/#{n})" }
-  att_lines   = image_lines + file_lines
-  att_section  = att_lines.empty? ? "" : "## #{NotesCommon::MD_TEXT["attachments"]}\n" + att_lines.join("\n")
-  link_section = internal_links.empty? ? "" : "## #{NotesCommon::MD_TEXT["internal_links"]}\n" + internal_links.join("\n")
-
-  fm = {}
-  fm["created_at"]   = created_date
-  fm["note_id"]      = note_id
-  fm["tags"]         = "[#{tags.join(', ')}]" if tags.any?
-  # Fields you added yourself are written back unchanged.
-  own_fields = NotesCommon.frontmatter_entries(existing_text).reject { |k, _| MANAGED_FIELDS.include?(k) }
-  render_frontmatter = -> {
-    "---\n" + fm.to_h { |k, v| [k, "#{k}: #{v}\n"] }.merge(own_fields).sort.map(&:last).join + "---\n"
+    File.exist?(dest)
   }
-  new_text = render_frontmatter.() + "\n" + [clean_body, att_section, link_section].reject(&:empty?).join("\n\n") + "\n"
-
-  # Checkboxes: the body() HTML loses the checked state, so it is read from ZDATA.
-  # Locked notes have encrypted ZDATA.
-  zdata = NotesCommon.note_zdata(db, note_id)
-  if zdata
-    alt_text = ->(id) {
-      db.get_first_value("SELECT ZALTTEXT FROM ZICCLOUDSYNCINGOBJECT WHERE lower(ZIDENTIFIER) = ?", [id.downcase])
-    }
-    new_text, box_problems = NotesCommon.apply_checkboxes(new_text, zdata, alt_text)
-    box_problems.each { |p| log "#{log_pos} CHECKBOX #{md_path.sub("#{scan_root}/", '')}: #{p}" }
+  built = NotesCommon.build_md(db, note_id, raw_body, note_pk: note_pk, created_date: created_date,
+                               ref_ok: copy_asset, existing_text: existing_text)
+  if built[:error]
+    log "#{log_pos} ERROR pandoc for '#{title}': #{built[:error]}"
+    next
   end
-  fm["note_sum"] = NotesCommon.body_sum(new_text)
-  # The text is checked against the note before it is written, and the result
-  # goes into the frontmatter as export: pass or fail. A file whose status
-  # is unchanged compares as identical; export: true always differs.
-  result = NotesCommon.verify(raw_html, new_text, export_dir: export_dir)
-  fm["export"] = result[:status]
-  new_text = render_frontmatter.() + new_text.sub(NotesCommon::FRONTMATTER, "")
+  built[:not_downloaded].each { |media_uuid| log "#{log_pos} ATTACHMENT NOT DOWNLOADED: #{md_path.sub("#{scan_root}/", '')} (#{media_uuid})" }
+  built[:box_problems].each { |p| log "#{log_pos} CHECKBOX #{md_path.sub("#{scan_root}/", '')}: #{p}" }
+  new_text = built[:text]
+  result = built[:result]
 
   if repaired_assets > 0
     puts "#{log_pos} Repaired #{repaired_assets} asset#{repaired_assets == 1 ? '' : 's'}: #{md_path.sub("#{scan_root}/", '')}"

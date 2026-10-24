@@ -444,6 +444,91 @@ module NotesCommon
                        "WHERE lower(o.ZIDENTIFIER) = ? AND o.ZISPASSWORDPROTECTED IS NOT 1", [uuid.downcase])
   end
 
+  # --- One md file ---
+
+  # Frontmatter fields the export writes; all other fields are kept as they are.
+  MANAGED_FIELDS = %w[created_at note_id tags export note_sum]
+  IMAGE_EXTS = %w[.png .jpg .jpeg .heic .gif .tiff .webp]
+
+  # Builds the md file of one note: the converted body, the attachment and
+  # internal link sections, the checkboxes from the note data, and the
+  # frontmatter with note_sum and the result of the check. notes export and
+  # notes baseline both build with this, so the baseline is the exported file.
+  # existing_text is the current md file; fields you added there are kept.
+  # ref_ok.(asset_name, source_file) says whether an attachment is in place:
+  # the export copies it to assets/, the baseline checks the original in Notes.
+  # Returns { text:, result:, not_downloaded:, box_problems: } or { error: }.
+  def build_md(db, note_id, raw_body, note_pk:, created_date:, ref_ok:, existing_text: "")
+    clean_body, raw_html, pandoc_err = html_to_markdown(raw_body)
+    return { error: pandoc_err } if pandoc_err
+
+    internal_links = []
+    tags = []
+    db.execute("SELECT ZALTTEXT, ZTOKENCONTENTIDENTIFIER FROM ZICCLOUDSYNCINGOBJECT WHERE Z_ENT=9 AND ZTYPEUTI1='com.apple.notes.inlinetextattachment.link' AND ZNOTE1=?", note_pk).each do |r|
+      internal_links << "- #{r[0]} → #{r[1].sub(/\?.*/, '')}" if r[0] && r[1]
+    end
+    db.execute("SELECT ZALTTEXT FROM ZICCLOUDSYNCINGOBJECT WHERE ZTYPEUTI1='com.apple.notes.inlinetextattachment.hashtag' AND ZNOTE1=?", note_pk).each do |r|
+      tags << r[0].sub(/^#/, "") if r[0]
+    end
+    tags = tags.reject(&:empty?).uniq
+
+    # Attachments: the file is named after the attachment's UUID in Notes
+    # (<media_uuid>.<ext>), and the original name is the link text. The name is
+    # unique across asset folders.
+    saved_images = []
+    saved_files = []
+    refs = []
+    not_downloaded = []
+    attachment_sources(db, note_pk).each do |media_uuid, src|
+      unless src
+        not_downloaded << media_uuid
+        next
+      end
+      safe_name = asset_name(media_uuid, src)
+      refs << [safe_name, src]
+      # [, ] and \ in the original name are escaped so they do not break the markdown link.
+      label = File.basename(src).unicode_normalize(:nfc).gsub(/[\[\]\\]/) { "\\#{$&}" }
+      (IMAGE_EXTS.include?(File.extname(src).downcase) ? saved_images : saved_files) << [label, safe_name]
+    end
+
+    image_lines = saved_images.map { |text, n| "![#{text}](assets/#{n})" }
+    file_lines  = saved_files.map  { |text, n| "[#{text}](assets/#{n})" }
+    att_lines   = image_lines + file_lines
+    att_section  = att_lines.empty? ? "" : "## #{MD_TEXT["attachments"]}\n" + att_lines.join("\n")
+    link_section = internal_links.empty? ? "" : "## #{MD_TEXT["internal_links"]}\n" + internal_links.join("\n")
+
+    fm = {}
+    fm["created_at"]   = created_date
+    fm["note_id"]      = note_id
+    fm["tags"]         = "[#{tags.join(', ')}]" if tags.any?
+    # Fields you added yourself are written back unchanged.
+    own_fields = frontmatter_entries(existing_text).reject { |k, _| MANAGED_FIELDS.include?(k) }
+    render_frontmatter = -> {
+      "---\n" + fm.to_h { |k, v| [k, "#{k}: #{v}\n"] }.merge(own_fields).sort.map(&:last).join + "---\n"
+    }
+    text = render_frontmatter.() + "\n" + [clean_body, att_section, link_section].reject(&:empty?).join("\n\n") + "\n"
+
+    # Checkboxes: the body() HTML loses the checked state, so it is read from ZDATA.
+    # Locked notes have encrypted ZDATA.
+    box_problems = []
+    zdata = note_zdata(db, note_id)
+    if zdata
+      alt_text = ->(id) {
+        db.get_first_value("SELECT ZALTTEXT FROM ZICCLOUDSYNCINGOBJECT WHERE lower(ZIDENTIFIER) = ?", [id.downcase])
+      }
+      text, box_problems = apply_checkboxes(text, zdata, alt_text)
+    end
+    fm["note_sum"] = body_sum(text)
+    # The text is checked against the note, and the result goes into the
+    # frontmatter as export: pass or fail.
+    result = verify(raw_html, text)
+    result[:broken_refs] = refs.reject { |name, src| ref_ok.(name, src) }.map { |name, _| "assets/#{name}" }
+    result[:status] = "fail" unless result[:broken_refs].empty?
+    fm["export"] = result[:status]
+    text = render_frontmatter.() + text.sub(FRONTMATTER, "")
+    { text: text, result: result, not_downloaded: not_downloaded, box_problems: box_problems }
+  end
+
   # --- Attachments ---
 
   ATTACHMENT_SQL = "SELECT m.ZIDENTIFIER, m.ZFILENAME, acct.ZIDENTIFIER FROM ZICCLOUDSYNCINGOBJECT a " \
