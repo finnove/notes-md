@@ -632,6 +632,18 @@ class ExportTest < Minitest::Test
     end
   end
 
+  # Text after the attachment section that is not a link (a # heading, plain
+  # lines) is the user's and stays.
+  def test_assets_keeps_text_after_the_attachment_section
+    Dir.mktmpdir do |dir|
+      env = assets_env(dir)
+      path = old_md(dir, section: "## Attachments\n\n![bilde.png](assets/bilde.png)\n# Overskrift\nen linje\n\nmer tekst\n")
+      out, status = run_export(env, dir, "--assets")
+      assert status.success?, out
+      assert File.read(path).end_with?("min egen linje\n\n## Attachments\n![bilde.png](assets/MEDIA1.png)\n# Overskrift\nen linje\n\nmer tekst\n"), File.read(path)
+    end
+  end
+
   def test_assets_counts_first_and_asks
     Dir.mktmpdir do |dir|
       env = assets_env(dir)

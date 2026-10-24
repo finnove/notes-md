@@ -571,14 +571,15 @@ module NotesCommon
   end
 
   ATTACHMENT_HEADINGS = Regexp.union(LANGUAGES.values.map { |t| t["attachments"] })
-  # The attachment section in an md file: from its heading to the next ##
-  # heading or the end, in any language in lang.yml.
-  ATTACHMENT_SECTION = /^## #{ATTACHMENT_HEADINGS}\n.*?(?=^## |\z)/m
+  # The attachment section in an md file: its heading, in any language in
+  # lang.yml, and the attachment links under it. It ends at the first line that
+  # is not a link to assets/, so text after it stays.
+  ATTACHMENT_SECTION = /^## #{ATTACHMENT_HEADINGS}\n(?:\n*!?\[(?:\\.|[^\]\\])*\]\(assets\/[^)]+\)(?:\n|\z))*/
 
   # text with its attachment section replaced by section, or, without one,
   # section put where the export puts it: before the internal links, or last.
   def replace_attachment_section(text, section)
-    return text.sub(ATTACHMENT_SECTION) { |old| section + (old.end_with?("\n\n") ? "\n\n" : "\n") } if text.match?(ATTACHMENT_SECTION)
+    return text.sub(ATTACHMENT_SECTION) { |old| section + (old.end_with?("\n") ? "\n" : "") } if text.match?(ATTACHMENT_SECTION)
     links = /^## #{LINK_SECTION}\n/
     return text.sub(links) { "#{section}\n\n#{$&}" } if text.match?(links)
     text.sub(/\n*\z/, "\n\n#{section}\n")
