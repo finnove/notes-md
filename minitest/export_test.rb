@@ -341,6 +341,18 @@ class ExportTest < Minitest::Test
     end
   end
 
+  # A file with export: fail that was edited afterwards is not rebuilt either.
+  def test_failed_skips_file_edited_by_hand
+    Dir.mktmpdir do |dir|
+      env = export_env(dir)
+      edited = BUILT_MD.sub("export: pass", "export: fail").sub("tekst", "tekst\nmin egen linje")
+      path = write_md(dir, "journal/aktiv.md", edited)
+      out, _ = run_export(env, dir, "--failed")
+      assert_equal edited, File.read(path), out
+      assert_includes out, "1 file(s) edited by hand since the export, not rebuilt.\n"
+    end
+  end
+
   def test_rebuild_ignores_frontmatter_changes_in_checksum
     Dir.mktmpdir do |dir|
       env = export_env(dir)
