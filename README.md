@@ -150,11 +150,11 @@ Requires macOS with Apple Notes, Ruby 3.0+, `pandoc` and `git`. A missing gem
 or `pandoc` stops `notes` with one line saying what to install.
 
 ```
-git clone https://github.com/finnove/notes-to-md.git ~/notes-to-md
-cd ~/notes-to-md
+git clone https://github.com/finnove/notes-md.git ~/notes-md
+cd ~/notes-md
 brew install pandoc
 bundle install
-export PATH="$HOME/notes-to-md:$PATH"            # also in ~/.zshrc
+export PATH="$HOME/notes-md:$PATH"            # also in ~/.zshrc
 mkdir ~/notes && git -C ~/notes init             # the archive, a git repo
 echo "apple_notes.raw/" > ~/notes/.gitignore     # without the cache
 mkdir ~/notes.baseline && git -C ~/notes.baseline init   # optional
