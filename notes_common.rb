@@ -301,7 +301,8 @@ module NotesCommon
     str = str.gsub(/~~/, "")
     str = str.gsub(/(^|(?<=\s))_{1,3}((?=\s)|$)/, "")
     str = str.gsub(/^> /, "")
-    str = str.gsub(/^(\s*[-*+] +)+(?=\S)/, "")
+    # A checkbox after the list marker comes from the note data, not the HTML.
+    str = str.gsub(/^(\s*[-*+] +(\[[ xX]\] +)?)+(?=\S)/, "")
     str = str.gsub(/^\s*(\d+\.\s+)+/, "")
     str = str.gsub(/^```.*$/, "")
     str = str.gsub(/\\([^\w\s]|_)/, '\1')

@@ -93,6 +93,14 @@ class ExportTest < Minitest::Test
     end
   end
 
+  # The checkboxes come from the note data, so a checklist note passes the check.
+  def test_checklist_note_passes_the_check
+    Dir.mktmpdir do |dir|
+      md, out = checklist_export(dir)
+      assert_includes md, "\nexport: pass\n", out
+    end
+  end
+
   def test_export_locked_note_keeps_plain_list
     Dir.mktmpdir do |dir|
       md, out = checklist_export(dir, locked: 1)

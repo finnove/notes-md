@@ -510,6 +510,20 @@ class NotesRegressionTest < Minitest::Test
 
   # A hard space (&nbsp;) counts as a space in the check: a cell or last line
   # with only &nbsp; is dropped from the md file, and the note must still pass.
+  # The checkboxes come from the note data, not the HTML, so the check
+  # ignores them: a checklist note must pass.
+  def test_verify_ignores_checkboxes
+    html = "<div>Liste</div><ul><li>Melk</li><li>Brød</li></ul>"
+    assert_equal "pass", NotesCommon.verify(html, "Liste\n\n- [ ] Melk\n- [x] Brød\n")[:status]
+    assert_equal "pass", NotesCommon.verify(html, "Liste\n\n-   [X] Melk\n-   [ ] Brød\n")[:status]
+    refute NotesCommon.verify("<div>Liste</div><ul><li>Melk</li></ul>", "Liste\n\n- [ ] Mel\n")[:text_match]
+  end
+
+  # Text in the note that looks like a checkbox is still compared.
+  def test_verify_keeps_checkbox_like_text
+    assert_equal "pass", NotesCommon.verify("<div>[ ] x</div>", "\\[ \\] x\n")[:status]
+  end
+
   def test_verify_treats_nbsp_as_space
     ["<table><tr><td><div>A</div></td><td><div>&nbsp;</div></td></tr></table>",
      "<div>A</div><div>&nbsp;</div>"].each do |html|
