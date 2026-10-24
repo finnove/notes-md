@@ -239,7 +239,9 @@ module NotesCommon
   # pass nil to skip that check.
   # Returns { status:, text_match:, missing_urls:, broken_refs: }.
   def verify(raw_html, md_content, export_dir: nil)
-    md_for_text = md_content.gsub(/\n+## #{MD_SECTIONS}\n.*\z/m, "")
+    # The frontmatter goes first: with only attachments, the section comes
+    # right after it and would take its last line break with it.
+    md_for_text = md_content.sub(FRONTMATTER, "").gsub(/(\A|\n+)## #{MD_SECTIONS}\n.*\z/m, "")
     notes_text = normalize(strip_html(raw_html))
     md_text    = normalize(strip_markdown(md_for_text))
 
@@ -278,6 +280,12 @@ module NotesCommon
     # and drops the content — the markdown side keeps it and text_match=false.
     str = str.gsub("&lt;", "\u{F8FE}").gsub("&gt;", "\u{F8FD}")
     doc = Nokogiri::HTML(str)
+    # "[ ]" typed at the start of a list item is ignored, as strip_markdown
+    # ignores the checkbox after a list marker.
+    doc.css("li").each do |li|
+      first = li.xpath(".//text()").find { |t| !t.text.strip.empty? }
+      first.content = first.text.sub(/\A(\s*)\[[ xX]\] +/, '\1') if first
+    end
     doc.css("br").each { |n| n.replace("\n") }
     doc.css("div, p, li, h1, h2, h3, h4, h5, h6, tr, td, th, pre").each { |n| n.add_next_sibling("\n") }
     text = Nokogiri::HTML::DocumentFragment.parse(doc.text).text

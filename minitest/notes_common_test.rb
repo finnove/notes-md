@@ -512,6 +512,18 @@ class NotesRegressionTest < Minitest::Test
   # with only &nbsp; is dropped from the md file, and the note must still pass.
   # The checkboxes come from the note data, not the HTML, so the check
   # ignores them: a checklist note must pass.
+  # A note with only attachments: the section comes right after the
+  # frontmatter, and the frontmatter must still be recognised.
+  def test_verify_note_with_only_attachments
+    md = "---\nexport: pass\nnote_id: x\n---\n\n## Attachments\n![a.png](assets/a.png)\n"
+    assert_equal "pass", NotesCommon.verify("<div><br></div>", md)[:status]
+  end
+
+  # "[ ]" typed as text in a list item in Notes is ignored on both sides.
+  def test_verify_checkbox_text_typed_in_notes
+    assert_equal "pass", NotesCommon.verify("<ul><li>[ ] Melk</li></ul>", "- [ ] Melk\n")[:status]
+  end
+
   def test_verify_ignores_checkboxes
     html = "<div>Liste</div><ul><li>Melk</li><li>Brød</li></ul>"
     assert_equal "pass", NotesCommon.verify(html, "Liste\n\n- [ ] Melk\n- [x] Brød\n")[:status]
