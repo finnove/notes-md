@@ -159,10 +159,7 @@ cd ~/notes-md
 brew install pandoc
 bundle install
 export PATH="$HOME/notes-md:$PATH"            # also in ~/.zshrc
-mkdir ~/notes && git -C ~/notes init             # the archive, a git repo
-echo "apple_notes.raw/" > ~/notes/.gitignore     # without the cache
-mkdir ~/notes.baseline && git -C ~/notes.baseline init   # optional
-notes export
+notes export                                  # creates ~/notes as a git repo the first time
 ```
 
 The first time, macOS asks whether the terminal may control Notes; answer OK.

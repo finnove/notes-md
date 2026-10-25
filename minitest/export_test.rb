@@ -257,6 +257,20 @@ class ExportTest < Minitest::Test
     end
   end
 
+  # The first time, ~/notes is created as a git repo without the cache.
+  def test_creates_notes_as_a_git_repo_the_first_time
+    Dir.mktmpdir do |dir|
+      env = export_env(dir)
+      root = File.join(dir, "ny")
+      out, status = run_export(env.merge("NOTES_ROOT" => root), dir)
+      assert status.success?, out
+      assert_includes out, "Created ~/notes as a git repo.\n"
+      assert File.directory?(File.join(root, ".git"))
+      assert_equal "apple_notes.raw/\n", File.read(File.join(root, ".gitignore"))
+      assert File.exist?(File.join(root, "import", "journal", "2018-01-01 aktiv.md")), out
+    end
+  end
+
   def test_stops_when_notes_is_not_a_git_repo
     Dir.mktmpdir do |dir|
       env = export_env(dir)
@@ -438,7 +452,7 @@ class ExportTest < Minitest::Test
       path = write_md(dir, "journal/aktiv.md", ACTIVE_MD.sub("export: pass", "export: true").sub("tekst", "gammel"))
       out, _ = run_export(env, dir, "--marked")
       assert_equal BUILT_MD, File.read(path), out
-      assert_includes out, "Tip: create ~/notes.baseline to see what a code change does before files are rewritten."
+      assert_includes out, "Tip: notes baseline shows what a code change does before files are rewritten."
     end
   end
 

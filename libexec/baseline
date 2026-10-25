@@ -10,6 +10,7 @@ Encoding.default_external = Encoding::UTF_8
 Encoding.default_internal = Encoding::UTF_8
 
 require_relative '../notes_common'
+require 'fileutils'
 require 'optparse'
 require 'sqlite3'
 
@@ -22,7 +23,8 @@ parser = OptionParser.new do |opts|
                 "Converts the whole local copy to the baseline folder (~/notes.baseline), one <uuid>.md per note,\n" \
                 "built exactly as notes export builds it; attachments are linked, not copied.\n" \
                 "See the changes with git diff in the folder, and commit to accept them as the new baseline.\n" \
-                "The folder must be a git repo; it stops if the previous baseline is not committed or discarded.\n" \
+                "The folder is created as a git repo the first time. It stops if the folder is not a git repo,\n" \
+                "or if the previous baseline is not committed or discarded.\n" \
                 "Shows how many notes have failed the check so far, so you can stop early with Ctrl-C,\n" \
                 "and at the end, now and in the previous baseline. When notes fail the check, it first asks\n" \
                 "whether to rebuild those first, then whether to rebuild all notes (default no while some still fail).\n" \
@@ -37,15 +39,20 @@ parser = OptionParser.new do |opts|
   opts.separator "  notes baseline && git -C ~/notes.baseline diff"
   opts.separator ""
   opts.separator "Environment variables:"
-  opts.separator "  NOTES_BASELINE  the baseline folder (default ~/notes.baseline). Must exist."
+  opts.separator "  NOTES_BASELINE  the baseline folder (default ~/notes.baseline). Created as a git repo the first time."
 end
 parser.parse!
 
-abort "Does not exist: #{NotesCommon::BASELINE_DIR}" unless Dir.exist?(NotesCommon::BASELINE_DIR)
+shown = NotesCommon::BASELINE_DIR.sub(/\A#{Regexp.escape(Dir.home)}(?=\/|\z)/, "~")
+# The first time, the folder is created as a git repo.
+unless Dir.exist?(NotesCommon::BASELINE_DIR)
+  FileUtils.mkdir_p NotesCommon::BASELINE_DIR
+  system("git", "init", "-q", NotesCommon::BASELINE_DIR)
+  puts "Created #{shown} as a git repo."
+end
 
 # The previous baseline must be committed or discarded first, so one diff
 # shows one code change.
-shown = NotesCommon::BASELINE_DIR.sub(/\A#{Regexp.escape(Dir.home)}(?=\/|\z)/, "~")
 top, git_ok = Open3.capture2e("git", "-C", NotesCommon::BASELINE_DIR, "rev-parse", "--show-toplevel")
 unless git_ok.success? && File.realpath(top.chomp) == File.realpath(NotesCommon::BASELINE_DIR)
   abort "#{shown} is not a git repo. Run: git -C #{shown} init"

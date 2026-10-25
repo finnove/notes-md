@@ -195,15 +195,6 @@ class BaselineTest < Minitest::Test
     refute_match(/\.rb:\d+:in /, out)
   end
 
-  def test_missing_baseline_dir_aborts
-    FileUtils.rm_rf @baseline
-    add_plain_note("<div>Hei</div>")
-    out = run_baseline
-    refute @status.success?, out
-    assert_match(/notes\.baseline/, out)
-    refute Dir.exist?(@baseline)
-  end
-
   # The previous baseline must be committed or discarded first, so one diff
   # shows one code change.
   def test_uncommitted_baseline_aborts
@@ -308,6 +299,23 @@ class BaselineTest < Minitest::Test
     commit_baseline
     out = run_baseline(input: "y\n")
     refute_includes out, "Rebuild only those"
+  end
+
+  # The first time, the baseline folder is created as a git repo.
+  def test_creates_the_baseline_folder_the_first_time
+    FileUtils.rm_rf @baseline
+    add_plain_note("<div>Hei</div>")
+    out = run_baseline
+    assert @status.success?, out
+    assert_includes out, "Created #{@baseline} as a git repo.\n"
+    assert File.directory?(File.join(@baseline, ".git"))
+    assert File.exist?(File.join(@baseline, "#{UUID}.md"))
+  end
+
+  def test_help_says_the_folder_is_created
+    out = run_baseline("--help")
+    assert_includes out, "Created as a git repo the first time"
+    refute_includes out, "Must exist"
   end
 
   def test_baseline_must_be_git_repo
