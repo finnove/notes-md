@@ -1,0 +1,35 @@
+# Runs every test on macOS with the newest pandoc, with the default and the
+# Norwegian section headings, on every push and pull request.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        notes_lang: ["en", "nb"]
+    env:
+      NOTES_LANG: ${{ matrix.notes_lang }}
+    steps:
+      # Pinned to commits (v7.0.1, v1.335.0): a tag can be moved, a commit cannot.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      - run: brew install pandoc
+      - name: Tests
+        run: |
+          for t in test/*_test.rb; do
+            echo "::group::$t"
+            bundle exec ruby "$t" || failed="$failed $t"
+            echo "::endgroup::"
+          done
+          [ -z "$failed" ] || { echo "Failed:$failed"; exit 1; }
