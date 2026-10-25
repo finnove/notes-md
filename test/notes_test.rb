@@ -2,13 +2,14 @@ require 'minitest/autorun'
 require 'open3'
 require 'rbconfig'
 require 'tmpdir'
+require_relative 'test_env'
 
 SCRIPT = "../bin/notes"
 
 class NotesTest < Minitest::Test
   CMD = File.expand_path(SCRIPT, __dir__)
   # In the order they are used.
-  COMMANDS = %w[export compare health sync prune baseline report]
+  COMMANDS = %w[export compare health sync prune baseline report config]
 
   def run_cmd(*args)
     out, status = Open3.capture2e({ "LANG" => "en_US.UTF-8", "LC_ALL" => "en_US.UTF-8" }, "ruby", CMD, *args)

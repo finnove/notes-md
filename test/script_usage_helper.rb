@@ -1,5 +1,6 @@
 require 'minitest/autorun'
 require 'open3'
+require_relative 'test_env'
 
 Encoding.default_external = "UTF-8"
 Encoding.default_internal = "UTF-8"

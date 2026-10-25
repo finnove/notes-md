@@ -4,9 +4,7 @@ require 'open3'
 require 'tmpdir'
 require 'sqlite3'
 require_relative 'notes_proto_helper'
-# The tests expect the default headings, whatever the user has set; before
-# common is loaded, as it reads NOTES_LANG then, and for every command run.
-ENV.delete("NOTES_LANG")
+require_relative 'test_env'
 require_relative '../lib/notes_md/common'
 
 Encoding.default_external = Encoding::UTF_8

@@ -82,7 +82,7 @@ Content converted from Notes …
   Apple
   10
   ```
-- `NOTES_LANG=nb` gives the headings `## Vedlegg` and `## Interne lenker`.
+- `lang: nb` in the settings gives the headings `## Vedlegg` and `## Interne lenker`.
 
 | `export` | Meaning                                              |
 |----------|------------------------------------------------------|
@@ -107,6 +107,7 @@ Content converted from Notes …
 | `notes baseline` | Convert every note to `~/notes.baseline` to test a code change |
 | `notes report`   | Report the notes with `export: fail`, text masked, for an issue |
 | `--baseline`     | The notes that fail in `~/notes.baseline` instead           |
+| `notes config`   | Show the settings; the first time, create the config file      |
 
 ## Typical workflow
 
@@ -166,18 +167,23 @@ The first time, macOS asks whether the terminal may control Notes; answer OK.
 If reading `NoteStore.sqlite` fails, give the terminal Full Disk Access in
 System Settings → Privacy & Security.
 
-## Environment variables
+## Settings
 
-| Variable             | Default                                                    |
-|----------------------|------------------------------------------------------------|
-| `NOTES_ROOT`         | `~/notes`                                                  |
-| `NOTES_RAW_CACHE`    | `$NOTES_ROOT/apple_notes.raw`                              |
-| `NOTES_IMPORT`       | `$NOTES_ROOT/import`                                       |
-| `NOTES_BASELINE`     | `~/notes.baseline`                                         |
-| `NOTES_DB`           | `~/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite` |
-| `NOTES_LANG`         | `en`; `nb` for Norwegian section headings                  |
-| `NOTES_BOLD_LINE_AS_HEADING` | `1`: a line that is only bold becomes a `##` heading |
-| `NOTES_LIMIT_FOLDER` | Sync only this folder in Notes                             |
+`notes config` creates `~/.config/notes-md/config.yml` with every setting
+commented out, and shows the settings that apply and where each comes from.
+An environment variable changes a setting for one run.
+
+| Setting                | Variable                     | Default                                    |
+|------------------------|------------------------------|--------------------------------------------|
+| `root`                 | `NOTES_ROOT`                 | `~/notes`                                  |
+| `raw_cache`            | `NOTES_RAW_CACHE`            | `apple_notes.raw` in root                  |
+| `import`               | `NOTES_IMPORT`               | `import` in root                           |
+| `baseline`             | `NOTES_BASELINE`             | `~/notes.baseline`                         |
+| `db`                   | `NOTES_DB`                   | the database of Apple Notes                |
+| `lang`                 | `NOTES_LANG`                 | `en`; `nb` for Norwegian section headings  |
+| `bold_line_as_heading` | `NOTES_BOLD_LINE_AS_HEADING` | `false`; `true`: a bold line becomes `##`  |
+|                        | `NOTES_LIMIT_FOLDER`         | sync only this folder in Notes             |
+| the file itself        | `NOTES_CONFIG`               | `notes-md/config.yml` in `$XDG_CONFIG_HOME` or `~/.config` |
 
 ## Tests
 

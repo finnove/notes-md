@@ -3,6 +3,7 @@ require 'minitest/autorun'
 require 'fileutils'
 require 'tmpdir'
 require 'securerandom'
+require_relative 'test_env'
 
 Encoding.default_external = "UTF-8"
 

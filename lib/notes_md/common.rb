@@ -6,6 +6,7 @@ require 'open3'
 require 'sqlite3'
 require 'yaml'
 require 'zlib'
+require_relative 'settings'
 
 # Shared code for the notes commands. The sections, in order: paths, HTML to
 # markdown, verification, dates and filenames, files, the Notes database,
@@ -15,14 +16,15 @@ module NotesCommon
 
   # --- Paths ---
 
-  NOTES_ROOT    = ENV["NOTES_ROOT"] || File.expand_path("~/notes")
-  RAW_CACHE_DIR = ENV["NOTES_RAW_CACHE"] || File.join(NOTES_ROOT, "apple_notes.raw")
-  IMPORT_DIR    = ENV["NOTES_IMPORT"] || File.join(NOTES_ROOT, "import")
-  BASELINE_DIR  = ENV["NOTES_BASELINE"] || File.expand_path("~/notes.baseline")
-  DB_PATH       = ENV["NOTES_DB"] || File.expand_path("~/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite")
+  # From the settings (settings.rb): the config file, or the environment.
+  NOTES_ROOT    = NotesSettings.path("root")
+  RAW_CACHE_DIR = NotesSettings.path("raw_cache", File.join(NOTES_ROOT, "apple_notes.raw"))
+  IMPORT_DIR    = NotesSettings.path("import", File.join(NOTES_ROOT, "import"))
+  BASELINE_DIR  = NotesSettings.path("baseline")
+  DB_PATH       = NotesSettings.path("db")
   LANGUAGES     = YAML.load_file(File.join(__dir__, "lang.yml"))
-  MD_TEXT       = LANGUAGES.fetch(ENV["NOTES_LANG"] || "en") {
-    abort "NOTES_LANG must be one of: #{LANGUAGES.keys.join(", ")}"
+  MD_TEXT       = LANGUAGES.fetch(NotesSettings.value("lang")) {
+    abort "#{NotesSettings.name("lang")} must be one of: #{LANGUAGES.keys.join(", ")}"
   }
   # Headings of the sections after the body, in every language, so a file
   # exported in one language is read right with another.
@@ -98,8 +100,8 @@ module NotesCommon
     has_h2 = clean_body.match?(/^## /)
     has_h3 = clean_body.match?(/^### /)
     clean_body = clean_body.gsub(/^### /, "## ") if has_h1 && has_h3 && !has_h2
-    # NOTES_BOLD_LINE_AS_HEADING=1: a line that is only bold text becomes a ## heading.
-    clean_body = clean_body.gsub(/^\*\*([^*\n]+)\*\*$/, '## \1') if ENV["NOTES_BOLD_LINE_AS_HEADING"] == "1"
+    # bold_line_as_heading: a line that is only bold text becomes a ## heading.
+    clean_body = clean_body.gsub(/^\*\*([^*\n]+)\*\*$/, '## \1') if NotesSettings.value("bold_line_as_heading")
     clean_body = clean_body.gsub(/^(\#{1,6} .*?)[ \t ]+$/, '\1')
     # Always one blank line after #, none after ## or deeper, and exactly one
     # before every heading (also right after a ## heading). Lines with only

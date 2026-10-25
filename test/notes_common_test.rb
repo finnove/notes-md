@@ -8,15 +8,11 @@ require 'sqlite3'
 require 'tmpdir'
 require 'yaml'
 require_relative 'notes_proto_helper'
-# The default headings, whatever the user has set; before common reads NOTES_LANG.
-ENV.delete("NOTES_LANG")
+require_relative 'test_env'
 require_relative '../lib/notes_md/common'
 
 Encoding.default_external = Encoding::UTF_8
 Encoding.default_internal = Encoding::UTF_8
-
-# The tests should give the same result whether or not the user has turned the rule on.
-ENV.delete("NOTES_BOLD_LINE_AS_HEADING")
 
 class NotesCommonTest < Minitest::Test
   def n(s); NotesCommon.normalize(s); end

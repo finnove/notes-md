@@ -13,6 +13,7 @@ COMMANDS = {
   "prune"    => "Delete the notes in Notes that you deleted from ~/notes",
   "baseline" => "See what a code change does to every note before it touches ~/notes",
   "report"   => "Report notes that fail the check, without their text, for an issue",
+  "config"   => "Show the settings, and create the config file to change them",
 }
 
 parser = OptionParser.new do |opts|
