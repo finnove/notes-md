@@ -791,6 +791,17 @@ class ExportTest < Minitest::Test
     end
   end
 
+  # Without access to the Notes database (Full Disk Access), one line on what to do.
+  def test_unreadable_database_says_what_to_do
+    Dir.mktmpdir do |dir|
+      db = File.join(dir, "missing", "NoteStore.sqlite")
+      out, status = run_export(export_env(dir).merge("NOTES_DB" => db), dir)
+      refute status.success?
+      assert_equal "notes: cannot read the Notes database (#{db}). Give your terminal Full Disk Access:\n" \
+                   "System Settings → Privacy & Security → Full Disk Access.\n", out
+    end
+  end
+
   def test_unknown_language_gives_one_line
     Dir.mktmpdir do |dir|
       out, status = run_export(export_env(dir).merge("NOTES_LANG" => "xx"), dir)

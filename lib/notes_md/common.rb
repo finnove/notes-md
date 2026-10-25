@@ -31,7 +31,14 @@ module NotesCommon
   MD_SECTIONS   = Regexp.union(LANGUAGES.values.flat_map { |t| t.values_at("attachments", "internal_links") })
   LINK_SECTION  = Regexp.union(LANGUAGES.values.map { |t| t["internal_links"] })
 
-  def open_db = SQLite3::Database.new(DB_PATH, readonly: true)
+  # Without Full Disk Access for the terminal, macOS does not let it open the
+  # database; that is the usual reason, so the message says what to do.
+  def open_db
+    SQLite3::Database.new(DB_PATH, readonly: true)
+  rescue SQLite3::CantOpenException
+    abort "notes: cannot read the Notes database (#{DB_PATH}). Give your terminal Full Disk Access:\n" \
+          "System Settings → Privacy & Security → Full Disk Access."
+  end
 
   # Where notes baseline records the fingerprint of the conversion it was built with.
   FINGERPRINT_FILE = File.join(BASELINE_DIR, ".fingerprint")
