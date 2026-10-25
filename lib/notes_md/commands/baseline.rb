@@ -10,6 +10,7 @@ Encoding.default_external = Encoding::UTF_8
 Encoding.default_internal = Encoding::UTF_8
 
 require_relative '../common'
+require 'etc'
 require 'fileutils'
 require 'optparse'
 require 'sqlite3'
@@ -22,6 +23,7 @@ parser = OptionParser.new do |opts|
                 "your archive. Without it, you only find out when your real md files change.\n\n" \
                 "Converts the whole local copy to the baseline folder (~/notes.baseline), one <uuid>.md per note,\n" \
                 "built exactly as notes export builds it; attachments are linked, not copied.\n" \
+                "Builds on every processor at once, one worker per processor.\n" \
                 "See the changes with git diff in the folder, and commit to accept them as the new baseline.\n" \
                 "The folder is created as a git repo the first time. It stops if the folder is not a git repo,\n" \
                 "or if the previous baseline is not committed or discarded.\n" \
@@ -60,7 +62,9 @@ end
 changes, _ = Open3.capture2("git", "-C", NotesCommon::BASELINE_DIR, "status", "--porcelain")
 abort "#{shown} has uncommitted changes. Commit or discard them first (git -C #{shown} status)." unless changes.empty?
 
-db = NotesCommon.open_db
+# Each worker opens the database itself; a connection must not be shared across fork.
+NotesCommon.open_db.close
+puts "Running in parallel on #{Etc.nprocessors} cores."
 
 uuids = Dir.glob(File.join(NotesCommon::RAW_CACHE_DIR, "*.html")).map { |f| File.basename(f, ".html") }
 
@@ -69,7 +73,16 @@ failed_ids = Dir.glob(File.join(NotesCommon::BASELINE_DIR, "*.md"))
                 .select { |f| File.read(f, 2000).to_s.match?(/^export: fail$/) }.map { |f| File.basename(f, ".md") }
 failed_before = failed_ids.size
 
-trap("INT") { warn "\nAborted."; exit 130 }
+# The workers building now; Ctrl-C stops them too, also when only this process gets it.
+workers = []
+trap("INT") do
+  workers.each do |pid|
+    Process.kill("INT", pid)
+  rescue Errno::ESRCH
+  end
+  warn "\nAborted."
+  exit 130
+end
 ask = ->(question, default_yes: true) {
   print "#{question} #{default_yes ? "[Y/n]" : "[y/N]"} "
   $stdout.flush
@@ -80,29 +93,55 @@ ask = ->(question, default_yes: true) {
 
 # Each file is built the way notes export builds it. Attachments are linked
 # but not copied: the check looks for the original file in Notes instead.
-# Returns how many of the notes fail the check.
+# Returns "pass", "fail" or "skip".
 original_exists = ->(_, src) { File.exist?(src) }
+build_one = ->(db, uuid) {
+  raw = File.read(File.join(NotesCommon::RAW_CACHE_DIR, "#{uuid}.html"), encoding: "UTF-8")
+  note_pk, cd_created = db.get_first_row("SELECT Z_PK, ZCREATIONDATE3 FROM ZICCLOUDSYNCINGOBJECT WHERE lower(ZIDENTIFIER) = ?", [uuid.downcase])
+  unless note_pk
+    warn "SKIPPING (not in DB): #{uuid}"
+    return "skip"
+  end
+  built = NotesCommon.build_md(db, uuid, raw, note_pk: note_pk, created_date: NotesCommon.core_data_to_local_date(cd_created),
+                               ref_ok: original_exists)
+  if built[:error]
+    warn "ERROR pandoc for #{uuid}: #{built[:error]}"
+    return "skip"
+  end
+  File.write(File.join(NotesCommon::BASELINE_DIR, "#{uuid}.md"), built[:text])
+  built[:result][:status]
+}
+
+# One worker per processor, as most of the time is pandoc, one process per
+# note. Each file is its own, so the order does not matter. The workers send
+# one line per note; this process counts them. Returns how many fail the check.
 build = ->(ids) {
+  reader, writer = IO.pipe
+  workers = ids.each_with_index.group_by { |_, i| i % Etc.nprocessors }.values.map do |part|
+    fork do
+      trap("INT") { exit!(130) }
+      reader.close
+      writer.sync = true
+      db = NotesCommon.open_db
+      part.each { |uuid, _| writer.puts build_one.(db, uuid) }
+      writer.close
+      exit!(0)
+    end
+  end
+  writer.close
+  done = 0
   failed = 0
-  ids.each_with_index do |uuid, idx|
+  reader.each_line do |line|
+    done += 1
+    failed += 1 if line == "fail\n"
     # The failures so far, from the first one on, so a broken change can be
     # stopped early.
-    puts "[#{idx + 1}/#{ids.size}] converted#{", #{failed} failed" if failed > 0}" if (idx + 1) % 100 == 0
-    raw = File.read(File.join(NotesCommon::RAW_CACHE_DIR, "#{uuid}.html"), encoding: "UTF-8")
-    note_pk, cd_created = db.get_first_row("SELECT Z_PK, ZCREATIONDATE3 FROM ZICCLOUDSYNCINGOBJECT WHERE lower(ZIDENTIFIER) = ?", [uuid.downcase])
-    unless note_pk
-      warn "SKIPPING (not in DB): #{uuid}"
-      next
-    end
-    built = NotesCommon.build_md(db, uuid, raw, note_pk: note_pk, created_date: NotesCommon.core_data_to_local_date(cd_created),
-                                 ref_ok: original_exists)
-    if built[:error]
-      warn "ERROR pandoc for #{uuid}: #{built[:error]}"
-      next
-    end
-    File.write(File.join(NotesCommon::BASELINE_DIR, "#{uuid}.md"), built[:text])
-    failed += 1 if built[:result][:status] == "fail"
+    puts "[#{done}/#{ids.size}] converted#{", #{failed} failed" if failed > 0}" if done % 100 == 0
   end
+  reader.close
+  stopped = workers.map { |pid| Process.wait2(pid)[1] }.reject(&:success?)
+  workers = []
+  abort "A worker stopped before it was done; see the error above." if stopped.any?
   failed
 }
 

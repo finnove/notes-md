@@ -1,5 +1,6 @@
 require_relative 'script_usage_helper'
 require_relative 'notes_proto_helper'
+require 'etc'
 require 'fileutils'
 require 'sqlite3'
 require 'tmpdir'
@@ -173,6 +174,12 @@ class BaselineTest < Minitest::Test
     assert_includes out, "[200/200] converted, 1 failed\n"
   end
 
+  def test_first_line_says_how_many_cores
+    add_plain_note("<div>Hei</div>")
+    out = run_baseline
+    assert_equal "Running in parallel on #{Etc.nprocessors} cores.\n", out.lines.first
+  end
+
   def test_progress_without_failures_has_no_count
     add_many_notes(100)
     out = run_baseline
@@ -191,8 +198,13 @@ class BaselineTest < Minitest::Test
       out << io.read
       refute thr.value.success?
     end
-    assert_includes out, "Aborted."
+    assert_equal 1, out.scan("Aborted.").size, out
     refute_match(/\.rb:\d+:in /, out)
+    # The workers stop too: no files are written after it stopped.
+    written = -> { Dir.glob(File.join(@baseline, "*.md")).size }
+    before = written.()
+    sleep 0.5
+    assert_equal before, written.()
   end
 
   # The previous baseline must be committed or discarded first, so one diff
