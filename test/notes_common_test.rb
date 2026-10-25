@@ -8,6 +8,8 @@ require 'sqlite3'
 require 'tmpdir'
 require 'yaml'
 require_relative 'notes_proto_helper'
+# The default headings, whatever the user has set; before common reads NOTES_LANG.
+ENV.delete("NOTES_LANG")
 require_relative '../lib/notes_md/common'
 
 Encoding.default_external = Encoding::UTF_8
