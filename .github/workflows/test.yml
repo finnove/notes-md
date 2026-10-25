@@ -1,9 +1,10 @@
 # Runs every test on macOS with the newest pandoc, with the default and the
-# Norwegian section headings, on every push and pull request.
+# Norwegian section headings, on every push to main and every pull request.
 name: Tests
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
