@@ -6,7 +6,7 @@ require 'securerandom'
 
 Encoding.default_external = "UTF-8"
 
-SCRIPT = File.expand_path("../libexec/health", __dir__)
+SCRIPT = File.expand_path("../lib/notes_md/commands/health.rb", __dir__)
 
 def run_script(dir, extra_args = [])
   args = extra_args.dup
@@ -554,7 +554,7 @@ class NotesHealthMultiRefTest < Minitest::Test
 end
 
 class NotesHealthAllSilentTest < Minitest::Test
-  SCRIPT_PATH = File.expand_path("../libexec/health", __dir__)
+  SCRIPT_PATH = SCRIPT
 
   def setup
     @dir = Dir.mktmpdir
@@ -587,7 +587,7 @@ class NotesHealthAllSilentTest < Minitest::Test
 end
 
 class NotesHealthAllReportTest < Minitest::Test
-  SCRIPT_PATH = File.expand_path("../libexec/health", __dir__)
+  SCRIPT_PATH = SCRIPT
   UUID = "11111111-2222-3333-4444-555555555555"
 
   def setup

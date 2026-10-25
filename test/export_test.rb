@@ -1,10 +1,10 @@
 require_relative 'export_helper'
 require_relative 'script_usage_helper'
-require_relative '../notes_common'
+require_relative '../lib/notes_md/common'
 
-SCRIPT = "../libexec/export"
+SCRIPT = "../lib/notes_md/commands/export.rb"
 
-SCRIPT_PATH = File.expand_path "../libexec/export", __dir__
+SCRIPT_PATH = File.expand_path SCRIPT, __dir__
 
 class ExportTest < Minitest::Test
   include ScriptUsageHelper
@@ -13,7 +13,7 @@ class ExportTest < Minitest::Test
   def run_export(env, dir, *args, input: "y\n") = run_script(SCRIPT_PATH, env, *args, input: input)
 
   def test_help_shows_usage
-    assert_usage_on_help("libexec/export")
+    assert_usage_on_help("lib/notes_md/commands/export.rb")
   end
 
   def test_usage_lists_every_mode

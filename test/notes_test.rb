@@ -3,10 +3,10 @@ require 'open3'
 require 'rbconfig'
 require 'tmpdir'
 
-SCRIPT = "../notes"
+SCRIPT = "../bin/notes"
 
 class NotesTest < Minitest::Test
-  CMD = File.expand_path("../notes", __dir__)
+  CMD = File.expand_path(SCRIPT, __dir__)
   # In the order they are used.
   COMMANDS = %w[export compare health sync prune baseline report]
 
@@ -39,7 +39,7 @@ class NotesTest < Minitest::Test
   end
 
   def test_every_command_has_a_script
-    COMMANDS.each { |c| assert File.executable?(File.expand_path("../libexec/#{c}", __dir__)), c }
+    COMMANDS.each { |c| assert File.exist?(File.expand_path("../lib/notes_md/commands/#{c}.rb", __dir__)), c }
   end
 
   def test_unknown_command_fails
@@ -92,7 +92,7 @@ class NotesTest < Minitest::Test
       File.write(File.join(dir, "nokogiri.rb"), "raise LoadError, 'cannot load such file -- nokogiri'\n")
       out, status = run_with({ "RUBYLIB" => dir }, "health")
       assert_equal 1, status.exitstatus, out
-      assert_equal "notes: Ruby gem nokogiri is missing. Install it with: bundle install (in #{File.dirname(CMD)})\n", out
+      assert_equal "notes: Ruby gem nokogiri is missing. Install it with: bundle install (in #{File.expand_path("..", __dir__)})\n", out
     end
   end
 end

@@ -1,7 +1,8 @@
 require_relative 'export_helper'
 require_relative 'script_usage_helper'
+require_relative '../lib/notes_md/version'
 
-SCRIPT = "../libexec/report"
+SCRIPT = "../lib/notes_md/commands/report.rb"
 
 class ReportTest < Minitest::Test
   include ScriptUsageHelper
@@ -23,7 +24,7 @@ class ReportTest < Minitest::Test
   end
 
   def test_help_shows_usage
-    assert_usage_on_help("libexec/report")
+    assert_usage_on_help("lib/notes_md/commands/report.rb")
   end
 
   def test_help_says_nothing_is_written
@@ -37,9 +38,21 @@ class ReportTest < Minitest::Test
       out, status = run_report(failing_note(dir))
       assert status.success?, out
       lines = out.lines
-      assert_match(/\Anotes-md: \h{7,}/, lines[0])
+      assert_match(/\Anotes-md: #{Regexp.escape(NotesMd::VERSION)} \(\h{7,}(, with changes)?\)\n\z/, lines[0])
       assert_match(/\Apandoc: \d/, lines[1])
       assert_match(/\AmacOS: /, lines[2])
+    end
+  end
+
+  # Installed as a gem there is no git: only the version.
+  def test_version_without_git
+    Dir.mktmpdir do |dir|
+      env = failing_note(dir)
+      gem = File.join(dir, "gem")
+      FileUtils.mkdir_p gem
+      FileUtils.cp_r(File.expand_path("../lib", __dir__), gem)
+      out, _ = run_script(File.join(gem, "lib", "notes_md", "commands", "report.rb"), env, input: "")
+      assert_equal "notes-md: #{NotesMd::VERSION}\n", out.lines[0]
     end
   end
 

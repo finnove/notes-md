@@ -2,7 +2,7 @@ require 'fileutils'
 require 'json'
 require 'open3'
 require 'set'
-require_relative 'notes_common'
+require_relative 'common'
 
 # Syncs the raw cache with Notes: shows every difference and asks before
 # anything is fetched or deleted; if everything is in sync, nothing happens.

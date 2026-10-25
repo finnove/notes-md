@@ -2,9 +2,9 @@
 require 'optparse'
 require 'set'
 require 'fileutils'
-require_relative '../notes_common'
+require_relative '../common'
 
-TEST_FILE = "minitest/health_test.rb"
+TEST_FILE = "test/health_test.rb"
 
 Encoding.default_external = "UTF-8"
 

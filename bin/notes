@@ -1,8 +1,8 @@
 #!/usr/bin/env ruby
-# Entry point: `notes <command> [options]` runs libexec/<command>.
+# Entry point: `notes <command> [options]` runs lib/notes_md/commands/<command>.rb.
 require 'optparse'
 
-TEST_FILE = "minitest/notes_test.rb"
+TEST_FILE = "test/notes_test.rb"
 
 # In the order they are used.
 COMMANDS = {
@@ -43,11 +43,11 @@ end
 %w[nokogiri sqlite3].each do |gem|
   require gem
 rescue LoadError
-  abort "notes: Ruby gem #{gem} is missing. Install it with: bundle install (in #{__dir__})"
+  abort "notes: Ruby gem #{gem} is missing. Install it with: bundle install (in #{File.expand_path("..", __dir__)})"
 end
 if %w[export baseline report].include?(command) &&
    ENV["PATH"].to_s.split(File::PATH_SEPARATOR).none? { |dir| File.executable?(File.join(dir, "pandoc")) }
   abort "notes: pandoc not found. Install it with: brew install pandoc"
 end
 
-exec File.join(__dir__, "libexec", command), *ARGV
+exec RbConfig.ruby, File.expand_path("../lib/notes_md/commands/#{command}.rb", __dir__), *ARGV

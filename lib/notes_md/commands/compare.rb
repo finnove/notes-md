@@ -2,9 +2,9 @@
 require 'optparse'
 require 'set'
 require 'sqlite3'
-require_relative '../notes_common'
+require_relative '../common'
 
-TEST_FILE = "minitest/compare_test.rb"
+TEST_FILE = "test/compare_test.rb"
 
 options = { search_dir: NotesCommon::NOTES_ROOT }
 parser = OptionParser.new do |opts|
@@ -140,7 +140,7 @@ puts "-" * header.length
 
 # --- Disk checks: delegated to notes health (0 = healthy, 1 = problem) ---
 
-system(File.join(__dir__, "health"), "-s", SEARCH_DIR, "--silent")
+system(RbConfig.ruby, File.join(__dir__, "health.rb"), "-s", SEARCH_DIR, "--silent")
 health_problems = $?.exitstatus
 
 checks = [

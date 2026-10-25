@@ -4,7 +4,7 @@ require 'open3'
 require 'tmpdir'
 require 'sqlite3'
 require_relative 'notes_proto_helper'
-require_relative '../notes_common'
+require_relative '../lib/notes_md/common'
 
 Encoding.default_external = Encoding::UTF_8
 Encoding.default_internal = Encoding::UTF_8

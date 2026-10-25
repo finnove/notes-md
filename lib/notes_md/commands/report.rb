@@ -7,12 +7,13 @@
 Encoding.default_external = Encoding::UTF_8
 Encoding.default_internal = Encoding::UTF_8
 
-require_relative '../notes_common'
+require_relative '../common'
+require_relative '../version'
 require 'open3'
 require 'optparse'
 require 'sqlite3'
 
-TEST_FILE = "minitest/report_test.rb"
+TEST_FILE = "test/report_test.rb"
 
 options = {}
 parser = OptionParser.new do |opts|
@@ -117,15 +118,16 @@ around = ->(raw, p) {
 
 # The first line a command prints; nil when it fails or is missing (sw_vers outside macOS).
 run = lambda do |*cmd|
-  out, status = Open3.capture2(*cmd)
+  out, status = Open3.capture2(*cmd, err: File::NULL)
   status.success? ? out.lines.first.to_s.strip : nil
 rescue Errno::ENOENT
   nil
 end
-repo = File.expand_path("..", __dir__)
-commit = run.("git", "-C", repo, "rev-parse", "--short", "HEAD") || "unknown"
-dirty = run.("git", "-C", repo, "status", "--porcelain", "--", "notes", "notes_common.rb", "libexec", "lang.yml")
-puts "notes-md: #{commit}#{" (with changes)" if dirty && !dirty.empty?}"
+# The commit too when run from the repo; an installed gem has no git.
+repo = File.expand_path("../../..", __dir__)
+commit = run.("git", "-C", repo, "rev-parse", "--short", "HEAD")
+dirty = run.("git", "-C", repo, "status", "--porcelain", "--", "bin", "lib")
+puts "notes-md: #{NotesMd::VERSION}#{" (#{commit}#{", with changes" if dirty && !dirty.empty?})" if commit}"
 puts "pandoc: #{run.("pandoc", "--version").to_s.sub(/\Apandoc /, "")}"
 puts "macOS: #{run.("sw_vers", "-productVersion") || "unknown"}"
 puts ""

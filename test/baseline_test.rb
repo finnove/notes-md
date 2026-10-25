@@ -3,9 +3,9 @@ require_relative 'notes_proto_helper'
 require 'fileutils'
 require 'sqlite3'
 require 'tmpdir'
-require_relative '../notes_common'
+require_relative '../lib/notes_md/common'
 
-SCRIPT = "../libexec/baseline"
+SCRIPT = "../lib/notes_md/commands/baseline.rb"
 
 class BaselineTest < Minitest::Test
   include ScriptUsageHelper
@@ -74,7 +74,7 @@ class BaselineTest < Minitest::Test
   end
 
   def test_help_shows_usage
-    assert_usage_on_help("libexec/baseline")
+    assert_usage_on_help("lib/notes_md/commands/baseline.rb")
   end
 
   def test_help_shows_folder_as_written
@@ -335,8 +335,8 @@ require_relative 'export_helper'
 class BaselineMatchesExportTest < Minitest::Test
   include ExportHelper
 
-  BASELINE = File.expand_path("../libexec/baseline", __dir__)
-  EXPORT = File.expand_path("../libexec/export", __dir__)
+  BASELINE = File.expand_path("../lib/notes_md/commands/baseline.rb", __dir__)
+  EXPORT = File.expand_path("../lib/notes_md/commands/export.rb", __dir__)
 
   def export_and_baseline(dir, env)
     FileUtils.mkdir_p env["NOTES_BASELINE"]

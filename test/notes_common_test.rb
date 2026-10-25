@@ -1,4 +1,4 @@
-# Tests for notes_common.rb. The end-to-end tests for notes export are
+# Tests for lib/notes_md/common.rb. The end-to-end tests for notes export are
 # in export_test.rb.
 require 'minitest/autorun'
 require 'fileutils'
@@ -8,7 +8,7 @@ require 'sqlite3'
 require 'tmpdir'
 require 'yaml'
 require_relative 'notes_proto_helper'
-require_relative '../notes_common'
+require_relative '../lib/notes_md/common'
 
 Encoding.default_external = Encoding::UTF_8
 Encoding.default_internal = Encoding::UTF_8
@@ -42,14 +42,14 @@ class NotesCommonTest < Minitest::Test
   end
 
   def test_md_text_read_from_lang_file
-    lang = YAML.load_file(File.expand_path('../lang.yml', __dir__))
+    lang = YAML.load_file(File.expand_path('../lib/notes_md/lang.yml', __dir__))
     assert_equal lang["en"], NotesCommon::MD_TEXT
     assert_equal %w[en nb], lang.keys.sort
     lang.each_value { |t| assert_equal %w[attachments internal_links], t.keys.sort }
   end
 
   def test_md_headings_not_hardcoded
-    %w[libexec/export notes_common.rb].each do |f|
+    %w[lib/notes_md/commands/export.rb lib/notes_md/common.rb].each do |f|
       code = File.readlines(File.expand_path("../#{f}", __dir__)).reject { |l| l.strip.start_with?("#") }
       refute code.any? { |l| l.include?("Attachments") || l.include?("Internal links") }, f
     end
@@ -1691,7 +1691,7 @@ end
 
 class NotesPathsTest < Minitest::Test
   def paths(env)
-    code = "require #{File.expand_path('../notes_common', __dir__).dump}; " \
+    code = "require #{File.expand_path('../lib/notes_md/common', __dir__).dump}; " \
            "puts NotesCommon::NOTES_ROOT, NotesCommon::RAW_CACHE_DIR, NotesCommon::IMPORT_DIR, NotesCommon::DB_PATH, NotesCommon.open_db.readonly?"
     out, status = Open3.capture2e({ "HOME" => "/h", "NOTES_ROOT" => nil, "NOTES_RAW_CACHE" => nil, "NOTES_IMPORT" => nil, "NOTES_DB" => nil }.merge(env),
                                   "ruby", "-e", code)
@@ -1722,7 +1722,7 @@ class NotesPathsTest < Minitest::Test
 
   def test_default_db_path
     out, _ = Open3.capture2e({ "HOME" => "/h", "NOTES_DB" => nil }, "ruby", "-e",
-                             "require #{File.expand_path('../notes_common', __dir__).dump}; puts NotesCommon::DB_PATH")
+                             "require #{File.expand_path('../lib/notes_md/common', __dir__).dump}; puts NotesCommon::DB_PATH")
     assert_equal "/h/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite\n", out
   end
 end

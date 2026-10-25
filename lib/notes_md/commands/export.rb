@@ -9,8 +9,8 @@ require 'optparse'
 require 'set'
 require 'sqlite3'
 
-TEST_FILE = "minitest/export_test.rb"
-require_relative '../notes_sync'
+TEST_FILE = "test/export_test.rb"
+require_relative '../sync'
 
 begin
 
@@ -78,7 +78,7 @@ if rebuild && Dir.exist?(NotesCommon::BASELINE_DIR)
     print "Run notes baseline now? [Y/n] "
     answer = $stdin.gets&.strip&.downcase
     if answer && (answer.empty? || answer == "y")
-      system(File.join(__dir__, "baseline")) or exit 1
+      system(RbConfig.ruby, File.join(__dir__, "baseline.rb")) or exit 1
       abort "Check git -C ~/notes.baseline diff, then run notes export #{mode} again."
     end
   end
@@ -120,15 +120,12 @@ unless uncommitted.empty?
 end
 
 unless ENV["NOTES_SKIP_DB_CHECK"] || !$stdin.tty?
-  health_script = File.join(__dir__, "health")
-  if File.executable?(health_script)
-    output = `#{health_script} 2>&1`
-    unless $?.success?
-      puts output
-      print "\nProblems found in ~/notes. Continue anyway? (y/n) "
-      answer = $stdin.gets&.strip&.downcase
-      exit 1 unless answer == "y"
-    end
+  output, health_ok = Open3.capture2e(RbConfig.ruby, File.join(__dir__, "health.rb"))
+  unless health_ok.success?
+    puts output
+    print "\nProblems found in ~/notes. Continue anyway? (y/n) "
+    answer = $stdin.gets&.strip&.downcase
+    exit 1 unless answer == "y"
   end
 end
 

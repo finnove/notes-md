@@ -13,8 +13,8 @@ require 'optparse'
 require 'set'
 require 'sqlite3'
 
-TEST_FILE = "minitest/prune_test.rb"
-require_relative '../notes_common'
+TEST_FILE = "test/prune_test.rb"
+require_relative '../common'
 
 options = { empty: false }
 OptionParser.new do |opts|

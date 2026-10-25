@@ -127,7 +127,7 @@ or discarded.
 ### Example: fixing a conversion error
 
 Pasted code lost its spaces: `if @client.save` became `if@client.save`. You fix
-`notes_common.rb` and check the fix on every note before any real file changes:
+`lib/notes_md/common.rb` and check the fix on every note before any real file changes:
 
 ```
 notes baseline
@@ -158,7 +158,7 @@ git clone https://github.com/finnove/notes-md.git ~/notes-md
 cd ~/notes-md
 brew install pandoc
 bundle install
-export PATH="$HOME/notes-md:$PATH"            # also in ~/.zshrc
+export PATH="$HOME/notes-md/bin:$PATH"        # also in ~/.zshrc
 notes export                                  # creates ~/notes as a git repo the first time
 ```
 
@@ -182,7 +182,7 @@ System Settings → Privacy & Security.
 ## Tests
 
 ```
-ruby minitest/export_test.rb
+ruby test/export_test.rb
 ```
 
 The tests use their own database and temporary folders, never real notes.

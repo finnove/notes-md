@@ -3,7 +3,7 @@ require 'fileutils'
 require 'sqlite3'
 require 'tmpdir'
 
-SCRIPT = "../libexec/prune"
+SCRIPT = "../lib/notes_md/commands/prune.rb"
 
 class NotesPruneTest < Minitest::Test
   include ScriptUsageHelper
@@ -72,7 +72,7 @@ class NotesPruneTest < Minitest::Test
   end
 
   def test_help_shows_usage
-    assert_usage_on_help("libexec/prune")
+    assert_usage_on_help("lib/notes_md/commands/prune.rb")
   end
 
   def test_shows_missing_note_with_cache_content

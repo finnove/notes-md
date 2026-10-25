@@ -1,18 +1,18 @@
 require_relative 'export_helper'
 require_relative 'script_usage_helper'
 
-SCRIPT = "../libexec/sync"
+SCRIPT = "../lib/notes_md/commands/sync.rb"
 
 class SyncTest < Minitest::Test
   include ScriptUsageHelper
   include ExportHelper
 
-  SYNC = File.expand_path("../libexec/sync", __dir__)
+  SYNC = File.expand_path(SCRIPT, __dir__)
 
   def run_sync(env, *args, input: "y\n") = run_script(SYNC, env, *args, input: input)
 
   def test_help_shows_usage
-    assert_usage_on_help("libexec/sync")
+    assert_usage_on_help("lib/notes_md/commands/sync.rb")
   end
 
   def test_sync_ignores_foreign_files_in_import_dir

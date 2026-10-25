@@ -1,8 +1,8 @@
 #!/usr/bin/env ruby
 require 'optparse'
-require_relative '../notes_sync'
+require_relative '../sync'
 
-TEST_FILE = "minitest/sync_test.rb"
+TEST_FILE = "test/sync_test.rb"
 
 OptionParser.new do |opts|
   opts.banner = "Usage: notes sync\n\n" \

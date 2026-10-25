@@ -3,7 +3,7 @@ require 'fileutils'
 require 'sqlite3'
 require 'tmpdir'
 
-SCRIPT = "../libexec/compare"
+SCRIPT = "../lib/notes_md/commands/compare.rb"
 
 class CompareTest < Minitest::Test
   include ScriptUsageHelper
@@ -43,7 +43,7 @@ class CompareTest < Minitest::Test
   end
 
   def test_help_shows_usage
-    assert_usage_on_help("libexec/compare")
+    assert_usage_on_help("lib/notes_md/commands/compare.rb")
   end
 
   def test_recently_deleted_not_shown_or_counted

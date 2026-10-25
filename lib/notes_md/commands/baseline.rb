@@ -9,12 +9,12 @@
 Encoding.default_external = Encoding::UTF_8
 Encoding.default_internal = Encoding::UTF_8
 
-require_relative '../notes_common'
+require_relative '../common'
 require 'fileutils'
 require 'optparse'
 require 'sqlite3'
 
-TEST_FILE = "minitest/baseline_test.rb"
+TEST_FILE = "test/baseline_test.rb"
 
 parser = OptionParser.new do |opts|
   opts.banner = "Usage: notes baseline\n\n" \
