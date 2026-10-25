@@ -153,10 +153,14 @@ build = ->(ids) {
 first = []
 failed_now = 0
 report_hint = -> { puts "See why with notes report --baseline; it shows no text from the notes." if failed_now > 0 }
+# The counts only when one of them is not 0.
+summary = -> {
+  puts failed_now.zero? && failed_before.zero? ? "All notes pass the check." : "#{failed_now} note(s) fail the check (was #{failed_before})."
+}
 if !failed_ids.empty? && ask.("#{failed_ids.size} note(s) fail the check. Rebuild those first?")
   first = uuids & failed_ids
   failed_now = build.(first)
-  puts "#{failed_now} note(s) fail the check (was #{failed_before})."
+  summary.()
   rest = failed_now.zero? ? ask.("All pass. Rebuild all notes?") : ask.("#{failed_now} still fail. Rebuild all notes anyway?", default_yes: false)
   unless rest
     report_hint.()
@@ -169,5 +173,5 @@ failed_now += build.(uuids - first)
   File.delete(File.join(NotesCommon::BASELINE_DIR, "#{uuid}.md"))
 end
 File.write(NotesCommon::FINGERPRINT_FILE, NotesCommon.conversion_fingerprint)
-puts "#{failed_now} note(s) fail the check (was #{failed_before})."
+summary.()
 report_hint.()

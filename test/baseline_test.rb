@@ -241,6 +241,15 @@ class BaselineTest < Minitest::Test
 
   REPORT_HINT = "See why with notes report --baseline; it shows no text from the notes.\n"
 
+  # Nothing failed now or before: one line that says so, without the counts.
+  def test_all_pass_says_so
+    add_plain_note("<div>Hei</div>")
+    out = run_baseline
+    assert @status.success?, out
+    assert out.end_with?("All notes pass the check.\n"), out
+    refute_includes out, "0 note(s) fail"
+  end
+
   # Two notes, one that fails the check; a committed baseline of both, with a
   # mark in the file of the note that passes, to see whether it is rebuilt.
   def baseline_with_one_failure
