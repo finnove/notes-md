@@ -639,5 +639,26 @@ class NotesHealthAllReportTest < Minitest::Test
     out, status = health("--help")
     assert_equal 0, status
     assert_match(/--orphans/, out)
+    assert_match(/--list/, out)
+  end
+
+  # --list: one line per problem, every category, for comparing two runs
+  def test_list_one_line_per_problem
+    write(File.join(@dir, "b.md"), "---\nnote_id: #{UUID}\n---\n![x](assets/borte.png)\n")
+    write(File.join(@dir, "assets", "ubrukt.png"), "data")
+    write(File.join(@dir, ".skjult.md"), "---\ncreated_at: 2024-01-01\n---\n")
+    out, status = health("--list")
+    assert_equal ["broken: #{File.join(@dir, "b.md")} -> #{File.join(@dir, "assets", "borte.png")}",
+                  "created: #{File.join(@dir, "b.md")}",
+                  "duplicate note_id: #{UUID}",
+                  "hidden: #{File.join(@dir, ".skjult.md")}",
+                  "orphan: #{File.join(@dir, "assets", "ubrukt.png")}"], out.lines.map(&:chomp).sort
+    assert_equal 1, status
+  end
+
+  def test_list_healthy_is_empty_and_zero
+    out, status = health("--list")
+    assert_equal "", out
+    assert_equal 0, status
   end
 end

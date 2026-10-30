@@ -1009,6 +1009,79 @@ class ExportTest < Minitest::Test
     end
   end
 
+  # A problem in ~/notes from before the export is not repeated after it.
+  def orphan(dir)
+    write_md(dir, "annet/assets/ubrukt.png", "data")
+  end
+
+  def test_health_after_export_is_quiet_when_clean
+    Dir.mktmpdir do |dir|
+      env = export_env(dir)
+      out, status = run_export(env, dir)
+      assert status.success?, out
+      assert_includes out, "Done: 0 identical, 0 overwritten, 1 new"
+      refute_includes out, "notes health"
+    end
+  end
+
+  def test_health_after_export_skips_problems_from_before
+    Dir.mktmpdir do |dir|
+      env = export_env(dir)
+      orphan(dir)
+      out, status = run_export(env, dir)
+      assert status.success?, out
+      assert_includes out, "Done: 0 identical, 0 overwritten, 1 new"
+      refute_includes out, "notes health"
+    end
+  end
+
+  # The other note links to an attachment that the export then copies in:
+  # the broken link from before is gone, the shared attachment is new.
+  def test_health_after_export_shows_new_problem
+    Dir.mktmpdir do |dir|
+      env = export_env(dir)
+      orphan(dir)
+      write_md(dir, "import/journal/annet.md",
+               "---\ncreated_at: 2018-01-01\nnote_id: #{GHOST}\n---\n\n![bilde.png](assets/MEDIA1.png)\n")
+      home = File.join(dir, "home")
+      media = File.join(home, "Library", "Group Containers", "group.com.apple.notes", "Accounts", "KONTO", "Media", "MEDIA1", "x")
+      FileUtils.mkdir_p media
+      File.write(File.join(media, "bilde.png"), "png")
+      sql env, "INSERT INTO ZICCLOUDSYNCINGOBJECT (Z_PK, ZIDENTIFIER, ZFILENAME) VALUES (30, 'MEDIA1', 'bilde.png'), (31, 'KONTO', NULL)"
+      sql env, "INSERT INTO ZICCLOUDSYNCINGOBJECT (Z_PK, Z_ENT, ZNOTE, ZMEDIA, ZACCOUNT1) VALUES (32, 5, 10, 30, 31)"
+      out, status = run_export(env.merge("HOME" => home), dir)
+      assert_includes out, "\n\nNew problems after the export (notes health):\n" \
+                           "  multi: #{File.join(dir, "notes", "import", "journal", "assets", "MEDIA1.png")}\n"
+      refute_includes out, "ubrukt.png"
+      refute_includes out, "broken:"
+      assert_equal 1, status.exitstatus
+    end
+  end
+
+  def test_health_after_assets_shows_new_problem
+    Dir.mktmpdir do |dir|
+      env = assets_env(dir)
+      old_md(dir)
+      write_md(dir, "journal/annet.md",
+               "---\ncreated_at: 2018-01-01\nnote_id: #{GHOST}\n---\n\n![bilde.png](assets/MEDIA1.png)\n")
+      out, status = run_export(env, dir, "--assets")
+      assert_includes out, "New problems after the export (notes health):\n" \
+                           "  multi: #{File.join(dir, "notes", "journal", "assets", "MEDIA1.png")}\n"
+      assert_equal 1, status.exitstatus
+    end
+  end
+
+  def test_no_health_after_export_that_writes_nothing
+    Dir.mktmpdir do |dir|
+      env = export_env(dir)
+      run_export(env, dir)
+      out, status = run_export(env, dir, input: "y\nn\n")
+      assert status.success?, out
+      assert_includes out, "No new notes"
+      refute_includes out, "notes health"
+    end
+  end
+
   def test_argument_errors
     Dir.mktmpdir do |dir|
       env = export_env(dir)

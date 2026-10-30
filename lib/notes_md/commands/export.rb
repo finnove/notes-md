@@ -38,6 +38,8 @@ parser = OptionParser.new do |opts|
                 "pandoc has changed since the last one, so you see what changed before real\n" \
                 "files are rewritten. y runs it and stops; n rebuilds without it.\n" \
                 "Without a baseline folder there is no such check.\n\n" \
+                "After writing files, runs notes health and shows only the problems that\n" \
+                "were not there before the export; any gives exit 1.\n\n" \
                 "Options:"
   opts.on("--marked", "Rebuild notes with export: true in the frontmatter;",
                       "the files are overwritten where they are if the content has changed") { options[:marked] = true }
@@ -129,6 +131,18 @@ unless ENV["NOTES_SKIP_DB_CHECK"] || !$stdin.tty?
   end
 end
 
+# The problems in ~/notes before anything is written. After an export that
+# wrote files, only the problems that are new are shown, and they give exit 1.
+health_list = -> { Open3.capture2(RbConfig.ruby, File.join(__dir__, "health.rb"), "--list").first.lines.map(&:chomp) }
+health_before = health_list.call
+health_after = lambda do
+  new_problems = health_list.call - health_before
+  return if new_problems.empty?
+  puts "\nNew problems after the export (notes health):"
+  new_problems.each { |p| puts "  #{p}" }
+  exit 1
+end
+
 BASE_DIR = NotesCommon::IMPORT_DIR
 
 safe_filename = NotesCommon.method(:safe_filename)
@@ -216,6 +230,7 @@ if options[:assets]
   end
   puts "\nDone: #{plans.size} file(s) updated."
   puts "\nnext: check the changes with git diff, then stage and commit them yourself (git add, git commit)."
+  health_after.call
   exit 0
 end
 
@@ -497,6 +512,7 @@ if large_changes.any?
 end
 if overwritten_count + new_count > 0
   puts "\nnext: check the changes with git diff, then stage and commit them yourself (git add, git commit)."
+  health_after.call
 end
 exit 0
 

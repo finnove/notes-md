@@ -29,6 +29,7 @@ parser = OptionParser.new do |opts|
   opts.on("--created", "List markdown files missing created_at in the frontmatter") { options[:created] = true }
   opts.on("--rm", "With --orphans: delete orphaned assets") { options[:rm] = true }
   opts.on("--silent", "No output, only the exit code (0 = healthy, 1 = problem)") { options[:silent] = true }
+  opts.on("--list", "Every report, one line per problem, no colours (notes export compares two runs)") { options[:list] = true }
   opts.on("-v", "--verbose", "Show all sections, including green ones (hidden by default)") { options[:verbose] = true }
   opts.on("-s", "--search-dir DIR", "Root folder to search") { |d| options[:search_dir] = File.expand_path(d) }
   opts.on("-h", "--help", "Show this help") { puts opts; exit }
@@ -42,7 +43,7 @@ end
 parser.parse!
 
 categories = %i[multi orphans broken created].select { |k| options[k] }
-options[:all] = true if categories.empty?
+options[:all] = true if categories.empty? || options[:list]
 if options[:rm] && (options[:all] || categories != [:orphans])
   puts parser
   exit 1
@@ -181,15 +182,16 @@ if options[:created]
   missing_ca.sort!
 end
 
-dup_note_ids = 0
+dup_ids = []
 if options[:all]
   uuid_to_files = Hash.new { |h, k| h[k] = [] }
   all_md.each do |f|
     uuid = NotesCommon.frontmatter(File.read(f, encoding: "UTF-8"))["note_id"]
     uuid_to_files[uuid] << f if uuid
   end
-  dup_note_ids = uuid_to_files.count { |_, fs| fs.size >= 2 }
+  dup_ids = uuid_to_files.select { |_, fs| fs.size >= 2 }.keys
 end
+dup_note_ids = dup_ids.size
 
 # Hidden md files (name or folder starts with .) are not seen by Dir.glob
 # above, and should not exist in ~/notes.
@@ -205,6 +207,16 @@ problems += broken.size if options[:broken]
 problems += missing_ca.size if options[:created]
 problems += dup_note_ids if options[:all]
 problems += hidden_md.size if options[:all]
+
+if options[:list]
+  multi.each { |asset, _| puts "multi: #{asset}" }
+  orphan_assets.each { |a| puts "orphan: #{a}" }
+  broken.sort_by { |f, _| f }.each { |f, assets| assets.sort.each { |a| puts "broken: #{f} -> #{a}" } }
+  missing_ca.each { |f| puts "created: #{f}" }
+  dup_ids.sort.each { |uuid| puts "duplicate note_id: #{uuid}" }
+  hidden_md.each { |f| puts "hidden: #{f}" }
+  exit(problems > 0 ? 1 : 0)
+end
 
 unless options[:silent]
   show = ->(count) { count > 0 || options[:verbose] }
